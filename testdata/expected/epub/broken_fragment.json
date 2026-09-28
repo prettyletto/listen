@@ -1,0 +1,94 @@
+{
+  "ID": "5deffc200a11264a4eb63984b4fbf417edea71dd72b3885bb12a176e3f9109ff",
+  "Format": "epub",
+  "Metadata": {
+    "Title": "Broken Fragment Book",
+    "Authors": null,
+    "Language": "en"
+  },
+  "Blocks": [
+    {
+      "ID": "6a1a12ead426090d9fb03677d4fab64a",
+      "Seq": 0,
+      "Kind": "heading",
+      "Text": "Chapter One",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/chapter.xhtml",
+        "Fragment": "chapter-one",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "783f49bd8d6fb3afbf951964b8c9b4c2",
+      "Seq": 1,
+      "Kind": "paragraph",
+      "Text": "This chapter has readable text.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/chapter.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    }
+  ],
+  "Outline": [
+    {
+      "ID": "427d6c6613681334128c170beb958a46",
+      "Title": "Broken Fragment Book",
+      "Role": "book",
+      "Depth": 0,
+      "StartBlock": 0,
+      "EndBlockExclusive": 2,
+      "SourceTarget": {
+        "Path": "OEBPS/package.opf",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Confidence": "high",
+      "Provenance": "epub_nav",
+      "Children": [
+        {
+          "ID": "69e2129a73480ee54ba19aa9e405e848",
+          "Title": "Chapter One",
+          "Role": "chapter",
+          "Depth": 1,
+          "StartBlock": 0,
+          "EndBlockExclusive": 2,
+          "SourceTarget": {
+            "Path": "OEBPS/chapter.xhtml",
+            "Fragment": "missing-heading",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 0
+          },
+          "Confidence": "high",
+          "Provenance": "epub_nav",
+          "Children": null
+        }
+      ]
+    }
+  ],
+  "AuxiliaryNavigation": null,
+  "Warnings": [
+    "EPUB navigation fragment \"missing-heading\" was missing; mapped \"OEBPS/chapter.xhtml\" to the start of its spine document."
+  ]
+}

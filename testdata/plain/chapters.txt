@@ -1,0 +1,30 @@
+EXAMPLE BOOK
+
+TABLE OF CONTENTS
+
+CHAPTER 1 .... 1
+CHAPTER 2 .... 9
+
+PART I
+
+CHAPTER 1
+The Beginning
+
+This is real prose. It is deliberately long enough to be clearly different from a title.
+A second sentence continues the paragraph.
+
+A SMALL SECTION
+
+More prose follows this section heading.
+
+CHAPTER 2
+The Next Thing
+
+More chapter prose follows.
+
+PART II
+
+CHAPTER 1
+A Reset Number
+
+Chapter numbering resets under a new part.

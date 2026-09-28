@@ -1,0 +1,150 @@
+{
+  "ID": "a09bd03cd3ccf1f87810243a18903b6fa7f71008152bba02ab06c91ffcd0c8cc",
+  "Format": "epub",
+  "Metadata": {
+    "Title": "NCX Book",
+    "Authors": null,
+    "Language": "en"
+  },
+  "Blocks": [
+    {
+      "ID": "dff737087d8da47dd0ca78a40ab3756b",
+      "Seq": 0,
+      "Kind": "heading",
+      "Text": "Chapter 1",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/c1.xhtml",
+        "Fragment": "c1",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "ba52c70d3591dcb1b05c27f3c103a348",
+      "Seq": 1,
+      "Kind": "paragraph",
+      "Text": "One.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/c1.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "bc0e2656d6d43818ae6aa1a173a3271f",
+      "Seq": 2,
+      "Kind": "heading",
+      "Text": "Chapter 2",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/c2.xhtml",
+        "Fragment": "c2",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 1
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "4073794076fa4e51d019830c45225750",
+      "Seq": 3,
+      "Kind": "paragraph",
+      "Text": "Two.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/c2.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 1
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    }
+  ],
+  "Outline": [
+    {
+      "ID": "7b3b4a6dc155b99eb1852d8f3c8cf9e9",
+      "Title": "NCX Book",
+      "Role": "book",
+      "Depth": 0,
+      "StartBlock": 0,
+      "EndBlockExclusive": 4,
+      "SourceTarget": {
+        "Path": "OEBPS/package.opf",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Confidence": "high",
+      "Provenance": "ncx",
+      "Children": [
+        {
+          "ID": "6c67365abcc1bbd4caef23668233c3a4",
+          "Title": "Chapter 1",
+          "Role": "chapter",
+          "Depth": 1,
+          "StartBlock": 0,
+          "EndBlockExclusive": 2,
+          "SourceTarget": {
+            "Path": "OEBPS/c1.xhtml",
+            "Fragment": "c1",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 0
+          },
+          "Confidence": "high",
+          "Provenance": "ncx",
+          "Children": null
+        },
+        {
+          "ID": "99eb31740031e0670763d6564bcf4b19",
+          "Title": "Chapter 2",
+          "Role": "chapter",
+          "Depth": 1,
+          "StartBlock": 2,
+          "EndBlockExclusive": 4,
+          "SourceTarget": {
+            "Path": "OEBPS/c2.xhtml",
+            "Fragment": "c2",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 1
+          },
+          "Confidence": "high",
+          "Provenance": "ncx",
+          "Children": null
+        }
+      ]
+    }
+  ],
+  "AuxiliaryNavigation": null,
+  "Warnings": [
+    "EPUB 2 NCX provided the navigation hierarchy."
+  ]
+}

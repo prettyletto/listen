@@ -1,0 +1,97 @@
+{
+  "ID": "aea105ecbfce3225c1e7ac2029ad8e27208606e35c34d6716c284795f6d4a0f8",
+  "Format": "epub",
+  "Metadata": {
+    "Title": "Broken Navigation Book",
+    "Authors": null,
+    "Language": "en"
+  },
+  "Blocks": [
+    {
+      "ID": "65750dfda480f1a7511c3c6f51462b37",
+      "Seq": 0,
+      "Kind": "heading",
+      "Text": "Chapter One",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/chapter.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "0b1067ff8bc1813706b4da4ba74a03ed",
+      "Seq": 1,
+      "Kind": "paragraph",
+      "Text": "This is the readable chapter.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/chapter.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    }
+  ],
+  "Outline": [
+    {
+      "ID": "175f7d373d49a5338ce17097ecc5dca4",
+      "Title": "Broken Navigation Book",
+      "Role": "book",
+      "Depth": 0,
+      "StartBlock": 0,
+      "EndBlockExclusive": 2,
+      "SourceTarget": {
+        "Path": "OEBPS/package.opf",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Confidence": "medium",
+      "Provenance": "content_heading",
+      "Children": [
+        {
+          "ID": "c9147523268b36b314ca8c3c8b1f25f2",
+          "Title": "Chapter One",
+          "Role": "chapter",
+          "Depth": 1,
+          "StartBlock": 0,
+          "EndBlockExclusive": 2,
+          "SourceTarget": {
+            "Path": "OEBPS/chapter.xhtml",
+            "Fragment": "",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 0
+          },
+          "Confidence": "high",
+          "Provenance": "content_heading",
+          "Children": []
+        }
+      ]
+    }
+  ],
+  "AuxiliaryNavigation": null,
+  "Warnings": [
+    "Unsupported linear EPUB spine resource \"OEBPS/supplement.pdf\" was omitted from the reading stream.",
+    "EPUB navigation entry \"Lost Appendix\" references \"ghost.xhtml#missing\", which is absent from the package manifest and was omitted.",
+    "EPUB navigation entry \"Unsupported Appendix\" targets \"supplement.pdf#page\", a linear spine resource with no readable blocks.",
+    "EPUB navigation targets could not be mapped; XHTML headings and spine document boundaries were used."
+  ]
+}

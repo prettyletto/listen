@@ -1,0 +1,168 @@
+{
+  "format": "markdown",
+  "metadata": {
+    "Title": "Fixture Reader",
+    "Authors": [
+      "Ada Lovelace"
+    ],
+    "Language": "en"
+  },
+  "blocks": [
+    {
+      "seq": 0,
+      "kind": "code",
+      "text": "--- title: Fixture Reader author: Ada Lovelace language: en ---",
+      "byte_start": 0,
+      "byte_end": 63,
+      "semantics": [
+        "front_matter"
+      ],
+      "skip_by_default": true
+    },
+    {
+      "seq": 1,
+      "kind": "heading",
+      "text": "Fixture Reader",
+      "level": 1,
+      "byte_start": 66,
+      "byte_end": 80
+    },
+    {
+      "seq": 2,
+      "kind": "paragraph",
+      "text": "Intro text.",
+      "byte_start": 82,
+      "byte_end": 93
+    },
+    {
+      "seq": 3,
+      "kind": "heading",
+      "text": "First Chapter",
+      "level": 2,
+      "byte_start": 98,
+      "byte_end": 111
+    },
+    {
+      "seq": 4,
+      "kind": "paragraph",
+      "text": "Text strong with link.",
+      "byte_start": 113,
+      "byte_end": 162
+    },
+    {
+      "seq": 5,
+      "kind": "paragraph",
+      "text": "A second paragraph.",
+      "byte_start": 164,
+      "byte_end": 183
+    },
+    {
+      "seq": 6,
+      "kind": "list_item",
+      "text": "First list item",
+      "byte_start": 187,
+      "byte_end": 202
+    },
+    {
+      "seq": 7,
+      "kind": "list_item",
+      "text": "Second inline item",
+      "byte_start": 205,
+      "byte_end": 225
+    },
+    {
+      "seq": 8,
+      "kind": "quote",
+      "text": "Quoted words.",
+      "byte_start": 229,
+      "byte_end": 242,
+      "semantics": [
+        "blockquote"
+      ]
+    },
+    {
+      "seq": 9,
+      "kind": "table_row",
+      "text": "Name; Meaning",
+      "byte_start": 244,
+      "byte_end": 262,
+      "semantics": [
+        "markdown_table",
+        "table_header"
+      ]
+    },
+    {
+      "seq": 10,
+      "kind": "table_row",
+      "text": "one; first value",
+      "byte_start": 277,
+      "byte_end": 298,
+      "semantics": [
+        "markdown_table"
+      ]
+    },
+    {
+      "seq": 11,
+      "kind": "table_row",
+      "text": "two; second value",
+      "byte_start": 299,
+      "byte_end": 321,
+      "semantics": [
+        "markdown_table"
+      ]
+    },
+    {
+      "seq": 12,
+      "kind": "code",
+      "text": "var indented = \"code\";",
+      "byte_start": 327,
+      "byte_end": 350,
+      "skip_by_default": true
+    },
+    {
+      "seq": 13,
+      "kind": "code",
+      "text": "func ignored() {}",
+      "byte_start": 357,
+      "byte_end": 375,
+      "semantics": [
+        "language:go"
+      ],
+      "skip_by_default": true
+    }
+  ],
+  "outline": [
+    {
+      "title": "Fixture Reader",
+      "role": "book",
+      "depth": 0,
+      "start_block": 0,
+      "end_block_exclusive": 14,
+      "confidence": "high",
+      "provenance": "content_heading",
+      "children": [
+        {
+          "title": "Fixture Reader",
+          "role": "book",
+          "depth": 1,
+          "start_block": 1,
+          "end_block_exclusive": 14,
+          "confidence": "high",
+          "provenance": "content_heading",
+          "children": [
+            {
+              "title": "First Chapter",
+              "role": "unknown",
+              "depth": 2,
+              "start_block": 3,
+              "end_block_exclusive": 14,
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "warnings": null
+}

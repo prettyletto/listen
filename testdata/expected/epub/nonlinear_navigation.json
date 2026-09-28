@@ -1,0 +1,113 @@
+{
+  "ID": "7da932406b2de371d9184c75665fa79b60774f1d32d1a09a7f4017bfecdb25ee",
+  "Format": "epub",
+  "Metadata": {
+    "Title": "Auxiliary Navigation Book",
+    "Authors": null,
+    "Language": "en"
+  },
+  "Blocks": [
+    {
+      "ID": "6a1a12ead426090d9fb03677d4fab64a",
+      "Seq": 0,
+      "Kind": "heading",
+      "Text": "Chapter One",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/chapter.xhtml",
+        "Fragment": "chapter-one",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "44d24f590eea4e3ddd89d72d11f599f1",
+      "Seq": 1,
+      "Kind": "paragraph",
+      "Text": "This is the linear chapter.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/chapter.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    }
+  ],
+  "Outline": [
+    {
+      "ID": "a50a312aa926cbabc7615e7455a71243",
+      "Title": "Auxiliary Navigation Book",
+      "Role": "book",
+      "Depth": 0,
+      "StartBlock": 0,
+      "EndBlockExclusive": 2,
+      "SourceTarget": {
+        "Path": "OEBPS/package.opf",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Confidence": "high",
+      "Provenance": "epub_nav",
+      "Children": [
+        {
+          "ID": "2b778fef46f9031a68a24524d222eb84",
+          "Title": "Chapter One",
+          "Role": "chapter",
+          "Depth": 1,
+          "StartBlock": 0,
+          "EndBlockExclusive": 2,
+          "SourceTarget": {
+            "Path": "OEBPS/chapter.xhtml",
+            "Fragment": "chapter-one",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 0
+          },
+          "Confidence": "high",
+          "Provenance": "epub_nav",
+          "Children": null
+        }
+      ]
+    }
+  ],
+  "AuxiliaryNavigation": [
+    {
+      "ID": "359dff4418c0242c8bd627d7e53cfca2",
+      "Title": "Supplement",
+      "NavigationPath": [
+        "Supplementary Material"
+      ],
+      "SourceTarget": {
+        "Path": "OEBPS/supplement.xhtml",
+        "Fragment": "appendix",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 1
+      },
+      "Provenance": "epub_nav"
+    }
+  ],
+  "Warnings": [
+    "Non-linear EPUB spine item \"OEBPS/supplement.xhtml\" was retained as provenance and excluded from default reading order.",
+    "EPUB navigation entry \"Supplement\" targets \"supplement.xhtml#appendix\" outside the linear reading spine; it is retained as auxiliary navigation metadata."
+  ]
+}

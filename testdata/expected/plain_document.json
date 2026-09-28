@@ -1,0 +1,4 @@
+[
+  {"seq": 0, "kind": "paragraph", "text": "Intro line one. Intro line two.", "byte_start": 0, "byte_end": 31},
+  {"seq": 1, "kind": "paragraph", "text": "Second paragraph.", "byte_start": 33, "byte_end": 50}
+]

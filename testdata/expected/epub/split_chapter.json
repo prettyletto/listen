@@ -1,0 +1,166 @@
+{
+  "ID": "61451b6d42a51a9c7d4700e44ee2d5e65e4ea438195ac8a6b46af4c3fa68c0ed",
+  "Format": "epub",
+  "Metadata": {
+    "Title": "Split Chapter",
+    "Authors": null,
+    "Language": "en"
+  },
+  "Blocks": [
+    {
+      "ID": "6c1c821819c35c02c61f1b48b38d2ac5",
+      "Seq": 0,
+      "Kind": "heading",
+      "Text": "Chapter 1",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/c1a.xhtml",
+        "Fragment": "c1",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "92a67bca718b957d040b1c62afc49797",
+      "Seq": 1,
+      "Kind": "paragraph",
+      "Text": "First half.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/c1a.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "46088e974f34383360cac4ddde8544f9",
+      "Seq": 2,
+      "Kind": "paragraph",
+      "Text": "Second half of the same chapter.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/c1b.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 1
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "bc0e2656d6d43818ae6aa1a173a3271f",
+      "Seq": 3,
+      "Kind": "heading",
+      "Text": "Chapter 2",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/c2.xhtml",
+        "Fragment": "c2",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 2
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "e79330c1e4ed3051eff96f78a54deb66",
+      "Seq": 4,
+      "Kind": "paragraph",
+      "Text": "Next chapter.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/c2.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 2
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    }
+  ],
+  "Outline": [
+    {
+      "ID": "5e1a3f26840cb59495bbd0026a58d3f4",
+      "Title": "Split Chapter",
+      "Role": "book",
+      "Depth": 0,
+      "StartBlock": 0,
+      "EndBlockExclusive": 5,
+      "SourceTarget": {
+        "Path": "OEBPS/package.opf",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Confidence": "high",
+      "Provenance": "epub_nav",
+      "Children": [
+        {
+          "ID": "621bdab267111e1098954337c51e6c27",
+          "Title": "Chapter 1",
+          "Role": "chapter",
+          "Depth": 1,
+          "StartBlock": 0,
+          "EndBlockExclusive": 3,
+          "SourceTarget": {
+            "Path": "OEBPS/c1a.xhtml",
+            "Fragment": "c1",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 0
+          },
+          "Confidence": "high",
+          "Provenance": "epub_nav",
+          "Children": null
+        },
+        {
+          "ID": "99eb31740031e0670763d6564bcf4b19",
+          "Title": "Chapter 2",
+          "Role": "chapter",
+          "Depth": 1,
+          "StartBlock": 3,
+          "EndBlockExclusive": 5,
+          "SourceTarget": {
+            "Path": "OEBPS/c2.xhtml",
+            "Fragment": "c2",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 2
+          },
+          "Confidence": "high",
+          "Provenance": "epub_nav",
+          "Children": null
+        }
+      ]
+    }
+  ],
+  "AuxiliaryNavigation": null,
+  "Warnings": null
+}

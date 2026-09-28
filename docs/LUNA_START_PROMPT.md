@@ -1,0 +1,7 @@
+# Prompt to start implementation with Luna Max
+
+Use this as the first implementation prompt after opening the repository:
+
+> After each slice passes its exit criteria and an independent read-only reviewer approves it, commit that slice before starting the next one.
+
+> Implement this repository from the foundation already written here. Start by reading `AGENTS.md`, then every document listed under `README.md -> Read first`, then inspect `reference/python-prototype/`. Do not redesign the product or skip ahead. Implement `docs/VERTICAL_SLICES.md` sequentially, beginning with Slice 0 and continuing only when each slice's exit criteria and tests pass. Preserve the product invariant that the normal UX is `listen <source>`. Go owns orchestration/parsing/caching/playback; Python is limited to long-lived Kokoro and optional local translation inference workers. Treat `docs/BOOK_STRUCTURE_AND_PARSING.md` as normative: EPUB spine defines reading order, EPUB nav/NCX defines hierarchy, and all structure maps to the canonical block IR. Write fixtures/tests before parser heuristics. Keep the repository compiling throughout. Run formatting, `go test ./...`, and `go vet ./...` after every meaningful change. If a dependency does not expose enough structure, adapt or replace it rather than weakening the IR. Do not silently send content to cloud services. Do not implement later-slice abstractions early unless a current test requires the seam.

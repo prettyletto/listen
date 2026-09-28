@@ -1,0 +1,148 @@
+{
+  "ID": "1060a9502bdff3d16ae3a7420509c2f2861e5cafd8e4cac77230f47dfe72fdcf",
+  "Format": "epub",
+  "Metadata": {
+    "Title": "Multi Chapter File",
+    "Authors": null,
+    "Language": "en"
+  },
+  "Blocks": [
+    {
+      "ID": "359b116393d73c6959ac823c891ff7dd",
+      "Seq": 0,
+      "Kind": "heading",
+      "Text": "Chapter 1",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/body.xhtml",
+        "Fragment": "c1",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "296d1deace123ed11461baec2a78dd55",
+      "Seq": 1,
+      "Kind": "paragraph",
+      "Text": "First chapter.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/body.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "abf41414e3da4e68551edbfbcd35977a",
+      "Seq": 2,
+      "Kind": "heading",
+      "Text": "Chapter 2",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/body.xhtml",
+        "Fragment": "c2",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    },
+    {
+      "ID": "6b191841a0ae16ecfb373d4141720342",
+      "Seq": 3,
+      "Kind": "paragraph",
+      "Text": "Second chapter.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/body.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": null,
+      "SkipByDefault": false
+    }
+  ],
+  "Outline": [
+    {
+      "ID": "a992f19418e3abd12dcc0d037e1979c0",
+      "Title": "Multi Chapter File",
+      "Role": "book",
+      "Depth": 0,
+      "StartBlock": 0,
+      "EndBlockExclusive": 4,
+      "SourceTarget": {
+        "Path": "OEBPS/package.opf",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Confidence": "high",
+      "Provenance": "epub_nav",
+      "Children": [
+        {
+          "ID": "6cdd12fbdf1d49508ac336b7c15a4db1",
+          "Title": "Chapter 1",
+          "Role": "chapter",
+          "Depth": 1,
+          "StartBlock": 0,
+          "EndBlockExclusive": 2,
+          "SourceTarget": {
+            "Path": "OEBPS/body.xhtml",
+            "Fragment": "c1",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 0
+          },
+          "Confidence": "high",
+          "Provenance": "epub_nav",
+          "Children": null
+        },
+        {
+          "ID": "504728d1e92e3b6673a74aa86042c4ad",
+          "Title": "Chapter 2",
+          "Role": "chapter",
+          "Depth": 1,
+          "StartBlock": 2,
+          "EndBlockExclusive": 4,
+          "SourceTarget": {
+            "Path": "OEBPS/body.xhtml",
+            "Fragment": "c2",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 0
+          },
+          "Confidence": "high",
+          "Provenance": "epub_nav",
+          "Children": null
+        }
+      ]
+    }
+  ],
+  "AuxiliaryNavigation": null,
+  "Warnings": null
+}

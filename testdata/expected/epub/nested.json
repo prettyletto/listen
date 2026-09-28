@@ -1,0 +1,608 @@
+{
+  "ID": "2cc6ead84a5ce439f861052e8419f152e0a97f80a22199af8007c31786dc166a",
+  "Format": "epub",
+  "Metadata": {
+    "Title": "Nested Book",
+    "Authors": null,
+    "Language": "en"
+  },
+  "Blocks": [
+    {
+      "ID": "838f3521f71ff77053879f0e346097a7",
+      "Seq": 0,
+      "Kind": "heading",
+      "Text": "Contents",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/nav.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": [
+        "toc"
+      ],
+      "SkipByDefault": true
+    },
+    {
+      "ID": "0dedecc33d1e8cc7e3e69bd63dfee9c9",
+      "Seq": 1,
+      "Kind": "list_item",
+      "Text": "Preface",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/nav.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": [
+        "toc",
+        "internal_link"
+      ],
+      "SkipByDefault": true
+    },
+    {
+      "ID": "58c7cbd907b454a55ded5eeb05093dc4",
+      "Seq": 2,
+      "Kind": "list_item",
+      "Text": "Part I",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/nav.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": [
+        "toc",
+        "internal_link"
+      ],
+      "SkipByDefault": true
+    },
+    {
+      "ID": "21438f73fab28a253bd74db54ca9c0ef",
+      "Seq": 3,
+      "Kind": "list_item",
+      "Text": "Chapter 1",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/nav.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": [
+        "toc",
+        "internal_link"
+      ],
+      "SkipByDefault": true
+    },
+    {
+      "ID": "1111b6677c8323e8cfb649bbb02d7e61",
+      "Seq": 4,
+      "Kind": "list_item",
+      "Text": "Section 1.1",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/nav.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": [
+        "toc",
+        "internal_link"
+      ],
+      "SkipByDefault": true
+    },
+    {
+      "ID": "83087658c6f7fe531598d2a361e28b08",
+      "Seq": 5,
+      "Kind": "list_item",
+      "Text": "Section 1.2",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/nav.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": [
+        "toc",
+        "internal_link"
+      ],
+      "SkipByDefault": true
+    },
+    {
+      "ID": "4dd1a2f0ffa7b2a6d40d44e9b6b71944",
+      "Seq": 6,
+      "Kind": "list_item",
+      "Text": "Chapter 2",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/nav.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": [
+        "toc",
+        "internal_link"
+      ],
+      "SkipByDefault": true
+    },
+    {
+      "ID": "fe9104f9733d3c799aaaafcba8679715",
+      "Seq": 7,
+      "Kind": "list_item",
+      "Text": "Appendix A",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/nav.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Semantics": [
+        "toc",
+        "internal_link"
+      ],
+      "SkipByDefault": true
+    },
+    {
+      "ID": "769231b1bb2faddacf1684705473642a",
+      "Seq": 8,
+      "Kind": "heading",
+      "Text": "Preface",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/preface.xhtml",
+        "Fragment": "pref",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 1
+      },
+      "Semantics": [
+        "preface"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "5bf12b3c1b59ad8dba5f94ed56651af4",
+      "Seq": 9,
+      "Kind": "paragraph",
+      "Text": "Preface body.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/preface.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 1
+      },
+      "Semantics": [
+        "preface"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "0fd06bf7e91cd06885484592e2ff5a98",
+      "Seq": 10,
+      "Kind": "heading",
+      "Text": "Chapter 1",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/chapter1.xhtml",
+        "Fragment": "c1",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 2
+      },
+      "Semantics": [
+        "chapter"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "8b2cfb00dceeaade254c074844e93ddc",
+      "Seq": 11,
+      "Kind": "paragraph",
+      "Text": "Chapter one opening.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/chapter1.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 2
+      },
+      "Semantics": [
+        "chapter"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "8764c58adaffabb07e3c6f5e9308170d",
+      "Seq": 12,
+      "Kind": "heading",
+      "Text": "Section 1.1",
+      "Level": 2,
+      "Source": {
+        "Path": "OEBPS/chapter1.xhtml",
+        "Fragment": "s1",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 2
+      },
+      "Semantics": [
+        "chapter"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "ca1c06c44982c0b05bb3bec67b67df0d",
+      "Seq": 13,
+      "Kind": "paragraph",
+      "Text": "Section one body.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/chapter1.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 2
+      },
+      "Semantics": [
+        "chapter"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "02c86ed6bd7c6da71c280f358ba678fe",
+      "Seq": 14,
+      "Kind": "heading",
+      "Text": "Section 1.2",
+      "Level": 2,
+      "Source": {
+        "Path": "OEBPS/chapter1.xhtml",
+        "Fragment": "s2",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 2
+      },
+      "Semantics": [
+        "chapter"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "d5316b1d3e84d535ec070433d159ea72",
+      "Seq": 15,
+      "Kind": "paragraph",
+      "Text": "Section two body.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/chapter1.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 2
+      },
+      "Semantics": [
+        "chapter"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "6ec234f3040aa6db04e855ff20c4e5db",
+      "Seq": 16,
+      "Kind": "heading",
+      "Text": "Chapter 2",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/chapter2.xhtml",
+        "Fragment": "c2",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 3
+      },
+      "Semantics": [
+        "chapter"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "89494c1824484645d4d093f9eb0c35e0",
+      "Seq": 17,
+      "Kind": "paragraph",
+      "Text": "Chapter two body.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/chapter2.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 3
+      },
+      "Semantics": [
+        "chapter"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "9dc9a9a41e258d90fcfa0a995f274cde",
+      "Seq": 18,
+      "Kind": "note",
+      "Text": "A footnote that should not interrupt default prose.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/chapter2.xhtml",
+        "Fragment": "note1",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 3
+      },
+      "Semantics": [
+        "chapter",
+        "footnote"
+      ],
+      "SkipByDefault": true
+    },
+    {
+      "ID": "3c84a24076cfada3d3e755592f478e1e",
+      "Seq": 19,
+      "Kind": "heading",
+      "Text": "Appendix A",
+      "Level": 1,
+      "Source": {
+        "Path": "OEBPS/appendix.xhtml",
+        "Fragment": "app",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 4
+      },
+      "Semantics": [
+        "appendix"
+      ],
+      "SkipByDefault": false
+    },
+    {
+      "ID": "aaa6f026ccfb4a51afaafdc9b6f664d8",
+      "Seq": 20,
+      "Kind": "paragraph",
+      "Text": "Appendix body.",
+      "Level": 0,
+      "Source": {
+        "Path": "OEBPS/appendix.xhtml",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 4
+      },
+      "Semantics": [
+        "appendix"
+      ],
+      "SkipByDefault": false
+    }
+  ],
+  "Outline": [
+    {
+      "ID": "699863c18f469e4d37bc855167099a07",
+      "Title": "Nested Book",
+      "Role": "book",
+      "Depth": 0,
+      "StartBlock": 0,
+      "EndBlockExclusive": 21,
+      "SourceTarget": {
+        "Path": "OEBPS/package.opf",
+        "Fragment": "",
+        "ByteStart": 0,
+        "ByteEnd": 0,
+        "Page": 0,
+        "DOMPath": "",
+        "SpineIndex": 0
+      },
+      "Confidence": "high",
+      "Provenance": "epub_nav",
+      "Children": [
+        {
+          "ID": "68c70ee5ddd392c05ac869c23d496d75",
+          "Title": "Preface",
+          "Role": "front_matter",
+          "Depth": 1,
+          "StartBlock": 8,
+          "EndBlockExclusive": 10,
+          "SourceTarget": {
+            "Path": "OEBPS/preface.xhtml",
+            "Fragment": "pref",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 1
+          },
+          "Confidence": "high",
+          "Provenance": "epub_nav",
+          "Children": null
+        },
+        {
+          "ID": "717a3c107faf1d471c6126aa619a0446",
+          "Title": "Part I",
+          "Role": "part",
+          "Depth": 1,
+          "StartBlock": 10,
+          "EndBlockExclusive": 19,
+          "SourceTarget": {
+            "Path": "",
+            "Fragment": "",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 0
+          },
+          "Confidence": "high",
+          "Provenance": "epub_nav",
+          "Children": [
+            {
+              "ID": "631526d0ef5b0789932ed9815b0de771",
+              "Title": "Chapter 1",
+              "Role": "chapter",
+              "Depth": 2,
+              "StartBlock": 10,
+              "EndBlockExclusive": 16,
+              "SourceTarget": {
+                "Path": "OEBPS/chapter1.xhtml",
+                "Fragment": "c1",
+                "ByteStart": 0,
+                "ByteEnd": 0,
+                "Page": 0,
+                "DOMPath": "",
+                "SpineIndex": 2
+              },
+              "Confidence": "high",
+              "Provenance": "epub_nav",
+              "Children": [
+                {
+                  "ID": "7ce5a12f4a3196b3b2947bdd5734f3ac",
+                  "Title": "Section 1.1",
+                  "Role": "section",
+                  "Depth": 3,
+                  "StartBlock": 12,
+                  "EndBlockExclusive": 14,
+                  "SourceTarget": {
+                    "Path": "OEBPS/chapter1.xhtml",
+                    "Fragment": "s1",
+                    "ByteStart": 0,
+                    "ByteEnd": 0,
+                    "Page": 0,
+                    "DOMPath": "",
+                    "SpineIndex": 2
+                  },
+                  "Confidence": "high",
+                  "Provenance": "epub_nav",
+                  "Children": null
+                },
+                {
+                  "ID": "ee472041960f24b7d9bd768401ca8330",
+                  "Title": "Section 1.2",
+                  "Role": "section",
+                  "Depth": 3,
+                  "StartBlock": 14,
+                  "EndBlockExclusive": 16,
+                  "SourceTarget": {
+                    "Path": "OEBPS/chapter1.xhtml",
+                    "Fragment": "s2",
+                    "ByteStart": 0,
+                    "ByteEnd": 0,
+                    "Page": 0,
+                    "DOMPath": "",
+                    "SpineIndex": 2
+                  },
+                  "Confidence": "high",
+                  "Provenance": "epub_nav",
+                  "Children": null
+                }
+              ]
+            },
+            {
+              "ID": "bbc951f109aa849bb5f914a8288dd714",
+              "Title": "Chapter 2",
+              "Role": "chapter",
+              "Depth": 2,
+              "StartBlock": 16,
+              "EndBlockExclusive": 19,
+              "SourceTarget": {
+                "Path": "OEBPS/chapter2.xhtml",
+                "Fragment": "c2",
+                "ByteStart": 0,
+                "ByteEnd": 0,
+                "Page": 0,
+                "DOMPath": "",
+                "SpineIndex": 3
+              },
+              "Confidence": "high",
+              "Provenance": "epub_nav",
+              "Children": null
+            }
+          ]
+        },
+        {
+          "ID": "d39821a0da59c56aff43cf17d7a3c485",
+          "Title": "Appendix A",
+          "Role": "appendix",
+          "Depth": 1,
+          "StartBlock": 19,
+          "EndBlockExclusive": 21,
+          "SourceTarget": {
+            "Path": "OEBPS/appendix.xhtml",
+            "Fragment": "app",
+            "ByteStart": 0,
+            "ByteEnd": 0,
+            "Page": 0,
+            "DOMPath": "",
+            "SpineIndex": 4
+          },
+          "Confidence": "high",
+          "Provenance": "epub_nav",
+          "Children": null
+        }
+      ]
+    }
+  ],
+  "AuxiliaryNavigation": null,
+  "Warnings": [
+    "EPUB table-of-contents page \"OEBPS/nav.xhtml\" is skipped during default narration."
+  ]
+}
