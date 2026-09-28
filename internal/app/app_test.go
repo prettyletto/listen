@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,6 +12,8 @@ import (
 	"github.com/prettyletto/listen/internal/domain"
 	"github.com/prettyletto/listen/internal/settings"
 	"github.com/prettyletto/listen/internal/source"
+	"github.com/prettyletto/listen/internal/speech"
+	"github.com/prettyletto/listen/internal/speech/kokoro"
 )
 
 func TestRunPrintsHelp(t *testing.T) {
@@ -131,5 +135,47 @@ func TestParseDocumentSelectsMarkdownParser(t *testing.T) {
 	}
 	if doc.Format != domain.FormatMarkdown || doc.Metadata.Title != "Example Book" {
 		t.Fatalf("unexpected parsed Markdown: format=%q title=%q", doc.Format, doc.Metadata.Title)
+	}
+}
+
+func TestParseDocumentSelectsHTMLParser(t *testing.T) {
+	path := "../../testdata/html/main-content.html"
+	doc, err := parseDocument(context.Background(), source.Input{Name: "main-content.html", Path: path})
+	if err != nil {
+		t.Fatalf("parse HTML: %v", err)
+	}
+	if doc.Format != domain.FormatHTML || doc.Metadata.Title != "After the Storm | City Daily" {
+		t.Fatalf("unexpected parsed HTML: format=%q title=%q", doc.Format, doc.Metadata.Title)
+	}
+	if isUnimplementedFormat(path) {
+		t.Fatal("HTML is still treated as an unimplemented format")
+	}
+}
+
+func TestListenHTMLFixtureSynthesizesSelectedContent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	var spoken []string
+	deps := runtimeDeps{
+		startSynth: func(_ context.Context, _ kokoro.Options) (speech.Synthesizer, error) {
+			return appTestSynth{t: t, onRequest: func(request speech.Request) {
+				spoken = append(spoken, request.Segment.SpokenText)
+			}}, nil
+		},
+	}
+	path := "../../testdata/html/main-content.html"
+	if err := runWithRuntime(context.Background(), []string{path, "--no-play"}, nil, io.Discard, io.Discard, deps); err != nil {
+		t.Fatalf("listen HTML fixture: %v", err)
+	}
+	text := strings.Join(spoken, " ")
+	if !strings.Contains(text, "The first rescue boats reached the riverside") || !strings.Contains(text, "What happened") {
+		t.Fatalf("main content was not synthesized: %q", text)
+	}
+	for _, unwanted := range []string{"Recommended story", "Copyright City Daily", "Subscribe for updates"} {
+		if strings.Contains(text, unwanted) {
+			t.Errorf("site chrome reached synthesized speech: %q", unwanted)
+		}
 	}
 }

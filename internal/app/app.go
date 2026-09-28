@@ -24,6 +24,7 @@ import (
 	"github.com/prettyletto/listen/internal/settings"
 	"github.com/prettyletto/listen/internal/source"
 	epubsource "github.com/prettyletto/listen/internal/source/epub"
+	htmlsource "github.com/prettyletto/listen/internal/source/html"
 	markdownsource "github.com/prettyletto/listen/internal/source/markdown"
 	textsource "github.com/prettyletto/listen/internal/source/text"
 	"github.com/prettyletto/listen/internal/speech"
@@ -58,7 +59,7 @@ Commands:
   models                 List available OpenAI translation models
   doctor                 Inspect local runtime and player readiness
 
-Current sources: UTF-8 text files, Markdown files, and EPUB books.
+Current sources: UTF-8 text files, Markdown files, HTML documents, and EPUB books.
 `
 
 type listenOptions struct {
@@ -362,6 +363,9 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 		default:
 			if strings.EqualFold(filepath.Ext(input.Name), ".epub") {
 				return apperr.New("source_read_failed", "Could not read this EPUB book.", "Check that the file is a valid EPUB and try again.", err)
+			}
+			if isHTMLPath(input.Name) {
+				return apperr.New("source_read_failed", "Could not read this HTML document.", "Check that the file is readable HTML and try again.", err)
 			}
 			return apperr.New("source_read_failed", "Could not read the text source.", "Check that the file is readable and try again.", err)
 		}
@@ -774,7 +778,7 @@ func startAuthorizedCloudTranslator(ctx context.Context, config settings.Config,
 }
 
 func parseDocument(ctx context.Context, input source.Input) (*domain.Document, error) {
-	selected, err := source.SelectParser(ctx, input, epubsource.NewParser(), markdownsource.NewParser(), textsource.NewParser())
+	selected, err := source.SelectParser(ctx, input, epubsource.NewParser(), htmlsource.NewParser(), markdownsource.NewParser(), textsource.NewParser())
 	if err != nil {
 		return nil, err
 	}
@@ -811,7 +815,16 @@ func expandHome(path string) string {
 
 func isUnimplementedFormat(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".html", ".htm", ".pdf":
+	case ".pdf":
+		return true
+	default:
+		return false
+	}
+}
+
+func isHTMLPath(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".html", ".htm", ".xhtml":
 		return true
 	default:
 		return false

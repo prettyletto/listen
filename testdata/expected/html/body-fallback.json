@@ -1,0 +1,83 @@
+{
+  "format": "html",
+  "metadata": {
+    "Title": "Notes from the harbor",
+    "Authors": [
+      "Grace Hopper"
+    ],
+    "Language": "en"
+  },
+  "blocks": [
+    {
+      "seq": 0,
+      "kind": "heading",
+      "text": "Notes from the harbor",
+      "level": 1,
+      "dom_path": "html[1]/body[1]/div[1]/h1[1]"
+    },
+    {
+      "seq": 1,
+      "kind": "heading",
+      "text": "A clear morning",
+      "level": 2,
+      "dom_path": "html[1]/body[1]/div[1]/section[1]/h2[1]",
+      "semantics": [
+        "section"
+      ]
+    },
+    {
+      "seq": 2,
+      "kind": "paragraph",
+      "text": "Fishermen returned before dawn while the harbor crews prepared the market.",
+      "dom_path": "html[1]/body[1]/div[1]/section[1]/p[1]",
+      "semantics": [
+        "section"
+      ]
+    },
+    {
+      "seq": 3,
+      "kind": "paragraph",
+      "text": "The old lighthouse white lighthouse above the shore guided boats toward the eastern pier.",
+      "dom_path": "html[1]/body[1]/div[1]/section[1]/p[2]",
+      "semantics": [
+        "section"
+      ]
+    }
+  ],
+  "outline": [
+    {
+      "title": "Notes from the harbor",
+      "role": "book",
+      "depth": 0,
+      "start_block": 0,
+      "end_block_exclusive": 4,
+      "confidence": "high",
+      "provenance": "content_heading",
+      "children": [
+        {
+          "title": "Notes from the harbor",
+          "role": "book",
+          "depth": 1,
+          "start_block": 0,
+          "end_block_exclusive": 4,
+          "confidence": "high",
+          "provenance": "content_heading",
+          "children": [
+            {
+              "title": "A clear morning",
+              "role": "section",
+              "depth": 2,
+              "start_block": 1,
+              "end_block_exclusive": 4,
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    "No \u003cmain\u003e or dominant \u003carticle\u003e was found; HTML body content was used with common site chrome suppressed."
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "format": "html",
+  "metadata": {
+    "Title": "Uma ponte para casa",
+    "Authors": [],
+    "Language": "pt-BR"
+  },
+  "blocks": [
+    {
+      "seq": 0,
+      "kind": "heading",
+      "text": "Uma ponte para casa",
+      "level": 1,
+      "dom_path": "html[1]/body[1]/article[2]/h1[1]",
+      "semantics": [
+        "article"
+      ]
+    },
+    {
+      "seq": 1,
+      "kind": "paragraph",
+      "text": "Na manhã de domingo, moradores atravessaram a ponte nova para visitar parentes do outro lado do rio.",
+      "dom_path": "html[1]/body[1]/article[2]/p[1]",
+      "semantics": [
+        "article"
+      ]
+    },
+    {
+      "seq": 2,
+      "kind": "heading",
+      "text": "O caminho",
+      "level": 2,
+      "dom_path": "html[1]/body[1]/article[2]/h2[1]",
+      "semantics": [
+        "article"
+      ]
+    },
+    {
+      "seq": 3,
+      "kind": "paragraph",
+      "text": "O trajeto agora leva dez minutos a pé. Antes da obra, as famílias precisavam viajar por uma estrada distante.",
+      "dom_path": "html[1]/body[1]/article[2]/p[2]",
+      "semantics": [
+        "article"
+      ]
+    },
+    {
+      "seq": 4,
+      "kind": "paragraph",
+      "text": "A comunidade organizou uma celebração simples na praça e agradeceu às equipes que trabalharam durante meses.",
+      "dom_path": "html[1]/body[1]/article[2]/p[3]",
+      "semantics": [
+        "article"
+      ]
+    }
+  ],
+  "outline": [
+    {
+      "title": "Uma ponte para casa",
+      "role": "book",
+      "depth": 0,
+      "start_block": 0,
+      "end_block_exclusive": 5,
+      "confidence": "high",
+      "provenance": "content_heading",
+      "children": [
+        {
+          "title": "Uma ponte para casa",
+          "role": "book",
+          "depth": 1,
+          "start_block": 0,
+          "end_block_exclusive": 5,
+          "confidence": "high",
+          "provenance": "content_heading",
+          "children": [
+            {
+              "title": "O caminho",
+              "role": "section",
+              "depth": 2,
+              "start_block": 2,
+              "end_block_exclusive": 5,
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "warnings": null
+}

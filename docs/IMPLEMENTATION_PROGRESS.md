@@ -246,12 +246,26 @@ OpenAI adapter rejects duplicate input IDs before a request, and context proof
 creation is private. The reviewer confirmed all findings closed and reported
 no remaining P0–P2 issues.
 
-## Next: Slice 9 — generic HTML
+## Slice 9 — generic HTML
+
+**Status:** Complete after independent reviewer approval.
 
 **Scenario:** `listen article.html` reads the main article while suppressing
-site navigation and footer content.
+site navigation and footer content. The parser selects `<main>`, then a
+dominant `<article>`, then falls back to body content with a diagnostic
+warning. It preserves DOM headings, paragraphs, lists, quotes, tables, and
+source DOM paths in the shared `Document` IR; EPUB continues to use its own
+parser.
 
-**Exit criteria:** HTML fixtures cover main-content extraction, semantic block
-preservation, headings, tables, and quotes; navigation/footer chrome is
-suppressed without regressions in EPUB parsing. Full quality gates and the
-independent Slice 9 reviewer approval are required before Slice 10.
+**Verified:** Golden fixtures cover all three selection paths, metadata,
+semantic blocks, heading ranges, and navigation/footer/sidebar suppression.
+An app-level `--no-play` test passes the selected content through segmentation,
+cache, and fake synthesis. `go test ./...` and `go vet ./...` pass.
+
+**Reviewer:** Approved by an independent read-only reviewer with no remaining
+P0–P2 findings.
+
+## Next: Slice 10 — PDF best-effort
+
+Slice 9 exit criteria and review are complete. Continue with PDF parsing only
+after this checkpoint.

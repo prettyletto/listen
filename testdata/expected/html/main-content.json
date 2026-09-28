@@ -1,0 +1,173 @@
+{
+  "format": "html",
+  "metadata": {
+    "Title": "After the Storm | City Daily",
+    "Authors": [],
+    "Language": "en"
+  },
+  "blocks": [
+    {
+      "seq": 0,
+      "kind": "heading",
+      "text": "After the Storm",
+      "level": 1,
+      "dom_path": "html[1]/body[1]/main[1]/header[1]/h1[1]",
+      "semantics": [
+        "main"
+      ]
+    },
+    {
+      "seq": 1,
+      "kind": "paragraph",
+      "text": "By Ada Lovelace",
+      "dom_path": "html[1]/body[1]/main[1]/header[1]/p[1]",
+      "semantics": [
+        "main"
+      ]
+    },
+    {
+      "seq": 2,
+      "kind": "paragraph",
+      "text": "The first rescue boats reached the riverside before sunrise, bringing warm blankets to the families waiting there.",
+      "dom_path": "html[1]/body[1]/main[1]/p[1]",
+      "semantics": [
+        "main"
+      ]
+    },
+    {
+      "seq": 3,
+      "kind": "quote",
+      "text": "We could see the lights coming through the rain.",
+      "dom_path": "html[1]/body[1]/main[1]/blockquote[1]",
+      "semantics": [
+        "main",
+        "blockquote"
+      ]
+    },
+    {
+      "seq": 4,
+      "kind": "heading",
+      "text": "What happened",
+      "level": 2,
+      "dom_path": "html[1]/body[1]/main[1]/section[1]/h2[1]",
+      "semantics": [
+        "main",
+        "section"
+      ]
+    },
+    {
+      "seq": 5,
+      "kind": "paragraph",
+      "text": "Water covered the lower road, so crews moved supplies to the school gym.",
+      "dom_path": "html[1]/body[1]/main[1]/section[1]/p[1]",
+      "semantics": [
+        "main",
+        "section"
+      ]
+    },
+    {
+      "seq": 6,
+      "kind": "list_item",
+      "text": "Crews opened the north shelter.",
+      "dom_path": "html[1]/body[1]/main[1]/section[1]/ul[1]/li[1]",
+      "semantics": [
+        "main",
+        "section",
+        "unordered_list"
+      ]
+    },
+    {
+      "seq": 7,
+      "kind": "list_item",
+      "text": "Neighbors brought food.",
+      "dom_path": "html[1]/body[1]/main[1]/section[1]/ul[1]/li[2]",
+      "semantics": [
+        "main",
+        "section",
+        "unordered_list"
+      ]
+    },
+    {
+      "seq": 8,
+      "kind": "list_item",
+      "text": "Fresh water arrived at noon.",
+      "dom_path": "html[1]/body[1]/main[1]/section[1]/ul[1]/li[2]/ul[1]/li[1]",
+      "semantics": [
+        "main",
+        "section",
+        "unordered_list"
+      ]
+    },
+    {
+      "seq": 9,
+      "kind": "paragraph",
+      "text": "Response times",
+      "dom_path": "html[1]/body[1]/main[1]/section[1]/table[1]/caption[1]",
+      "semantics": [
+        "main",
+        "section",
+        "table",
+        "table_caption"
+      ]
+    },
+    {
+      "seq": 10,
+      "kind": "table_row",
+      "text": "Team; Arrival",
+      "dom_path": "html[1]/body[1]/main[1]/section[1]/table[1]/thead[1]/tr[1]",
+      "semantics": [
+        "main",
+        "section",
+        "table",
+        "table_row",
+        "table_header"
+      ]
+    },
+    {
+      "seq": 11,
+      "kind": "table_row",
+      "text": "North crew; 6:10",
+      "dom_path": "html[1]/body[1]/main[1]/section[1]/table[1]/tbody[1]/tr[1]",
+      "semantics": [
+        "main",
+        "section",
+        "table",
+        "table_row"
+      ]
+    }
+  ],
+  "outline": [
+    {
+      "title": "After the Storm | City Daily",
+      "role": "book",
+      "depth": 0,
+      "start_block": 0,
+      "end_block_exclusive": 12,
+      "confidence": "high",
+      "provenance": "content_heading",
+      "children": [
+        {
+          "title": "After the Storm",
+          "role": "section",
+          "depth": 1,
+          "start_block": 0,
+          "end_block_exclusive": 12,
+          "confidence": "high",
+          "provenance": "content_heading",
+          "children": [
+            {
+              "title": "What happened",
+              "role": "section",
+              "depth": 2,
+              "start_block": 4,
+              "end_block_exclusive": 12,
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "warnings": null
+}
