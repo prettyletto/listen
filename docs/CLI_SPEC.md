@@ -9,6 +9,7 @@ listen <source>
 listen main.go --code
 listen <source> --translate <BCP-47>
 listen <source> --export [directory]
+listen <source> -o <directory>
 listen setup
 listen setup --translate en:pt-BR
 ```
@@ -68,11 +69,17 @@ and `q` or Ctrl-C stops and saves the position. Non-interactive runs do not
 prompt and keep the normal resume behavior.
 
 `--export [directory]` builds a reusable audiobook bundle without opening
-mpv. With no directory, `listen book.epub --export` writes `book-audio/` next
-to the source. The bundle contains a full-book MP3, a chapter-aware M4B,
-separate chapter MP3s, a chapter playlist, and a manifest. Export uses the
-same ordered segment plan and speech cache as playback; completed audio is
-reused on later runs.
+mpv. `-o <directory>` is its concise form, for example
+`listen book.epub -o ./book-audio/`. With no directory,
+`listen book.epub --export` writes `book-audio/` next to the source. The bundle
+contains a full-book MP3, a chapter-aware M4B, separate chapter MP3s, a chapter
+playlist, and a manifest. Export uses the same ordered segment plan and speech
+cache as playback. If generation is interrupted, completed audio stays cached;
+running the same command continues without regenerating finished segments.
+The selected output directory contains `current.json` and a versioned build:
+`builds/<build-id>/full-book.mp3`, `full-book.m4b`, `all-chapters.m3u`,
+`chapters/*.mp3`, and `manifest.json`. The command prints the completed build
+directory when the export is ready.
 
 `--translate <BCP-47>` identifies the target locale. Slice 7 currently ships
 one local pair: English to Brazilian Portuguese (`en:pt-BR`). EPUB language

@@ -27,7 +27,7 @@ func TestRunPrintsHelp(t *testing.T) {
 		if err := Run(context.Background(), args, strings.NewReader(""), &stdout, &bytes.Buffer{}); err != nil {
 			t.Fatalf("Run(%v): %v", args, err)
 		}
-		if !strings.Contains(stdout.String(), "listen <source>") || !strings.Contains(stdout.String(), "--export [DIRECTORY]") || !strings.Contains(stdout.String(), "--translate BCP-47") || !strings.Contains(stdout.String(), "--code") || !strings.Contains(stdout.String(), "documentation directories") {
+		if !strings.Contains(stdout.String(), "listen <source>") || !strings.Contains(stdout.String(), "--export [DIRECTORY]") || !strings.Contains(stdout.String(), "-o <DIRECTORY>") || !strings.Contains(stdout.String(), "--translate BCP-47") || !strings.Contains(stdout.String(), "--code") || !strings.Contains(stdout.String(), "documentation directories") {
 			t.Fatalf("Run(%v) did not explain the default command: %q", args, stdout.String())
 		}
 	}
@@ -202,6 +202,9 @@ func TestParseListenOptionsAcceptsExportWithOptionalDirectory(t *testing.T) {
 		{args: []string{"book.epub", "--export"}},
 		{args: []string{"book.epub", "--export", "book-output"}, path: "book-output"},
 		{args: []string{"--export=book-output", "book.epub"}, path: "book-output"},
+		{args: []string{"book.epub", "-o", "book-output"}, path: "book-output"},
+		{args: []string{"-o", "book-output", "book.epub"}, path: "book-output"},
+		{args: []string{"-o=book-output", "book.epub"}, path: "book-output"},
 	} {
 		options, err := parseListenOptions(test.args)
 		if err != nil {
@@ -213,6 +216,11 @@ func TestParseListenOptionsAcceptsExportWithOptionalDirectory(t *testing.T) {
 	}
 	if _, err := parseListenOptions([]string{"book.epub", "--export="}); err == nil {
 		t.Fatal("accepted an empty export directory")
+	}
+	for _, args := range [][]string{{"book.epub", "-o"}, {"book.epub", "-o="}} {
+		if _, err := parseListenOptions(args); err == nil {
+			t.Fatalf("accepted a missing output directory: %v", args)
+		}
 	}
 }
 

@@ -19,6 +19,9 @@ import (
 
 const playerActionTimeout = 750 * time.Millisecond
 
+// Let Bubble Tea dispatch a chapter key that raced with stream completion.
+const chapterActionGracePeriod = 50 * time.Millisecond
+
 type streamCompletion struct {
 	report pipeline.StreamReport
 	err    error
@@ -322,6 +325,10 @@ func runPlaybackPass(
 				if ctx.Err() != nil {
 					return playbackDecision{nextChapter: -1, err: ctx.Err()}
 				}
+				if target, ok := pendingChapterNavigation(actionChannel(display), currentChapter, chapters, len(fullPlan.Segments), chapterActionGracePeriod); ok {
+					cancelStream()
+					return playbackDecision{report: completion.report, nextChapter: target}
+				}
 				return playbackDecision{nextChapter: -1, err: completion.err}
 			}
 			streamReport = completion.report
@@ -421,13 +428,8 @@ func runPlaybackPass(
 					display.SetStatus("Skipped back 5 seconds")
 				}
 			case playerui.ActionPrevious, playerui.ActionNext:
-				target := currentChapter
-				if action.Kind == playerui.ActionPrevious {
-					target--
-				} else {
-					target++
-				}
-				if target < 0 || target >= len(chapters) || chapters[target].StartIndex >= len(fullPlan.Segments) {
+				target, valid := chapterTargetForAction(action, currentChapter, chapters, len(fullPlan.Segments))
+				if !valid {
 					if target < 0 {
 						display.SetStatus("You are at the first chapter")
 					} else {
@@ -520,6 +522,40 @@ func actionChannel(display playerScreen) <-chan playerui.Action {
 		return nil
 	}
 	return display.Actions()
+}
+
+func chapterTargetForAction(action playerui.Action, currentChapter int, chapters []playerui.Chapter, segmentCount int) (int, bool) {
+	target := currentChapter
+	switch action.Kind {
+	case playerui.ActionPrevious:
+		target--
+	case playerui.ActionNext:
+		target++
+	default:
+		return 0, false
+	}
+	if target < 0 || target >= len(chapters) || chapters[target].StartIndex >= segmentCount {
+		return target, false
+	}
+	return target, true
+}
+
+func pendingChapterNavigation(actions <-chan playerui.Action, currentChapter int, chapters []playerui.Chapter, segmentCount int, grace time.Duration) (int, bool) {
+	if actions == nil {
+		return 0, false
+	}
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	for {
+		select {
+		case action := <-actions:
+			if target, ok := chapterTargetForAction(action, currentChapter, chapters, segmentCount); ok {
+				return target, true
+			}
+		case <-timer.C:
+			return 0, false
+		}
+	}
 }
 
 func seekByWithTimeout(ctx context.Context, seeker playback.BufferedSeeker, delta time.Duration) (playback.Position, error) {

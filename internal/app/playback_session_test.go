@@ -41,6 +41,17 @@ func TestChaptersForPlanGroupsSegmentsByMajorUnit(t *testing.T) {
 	}
 }
 
+func TestPendingChapterNavigationWinsOverJustCompletedStreamError(t *testing.T) {
+	chapters := []playerui.Chapter{{Title: "One", StartIndex: 0}, {Title: "Two", StartIndex: 2}}
+	actions := make(chan playerui.Action, 2)
+	actions <- playerui.Action{Kind: playerui.ActionTogglePause}
+	actions <- playerui.Action{Kind: playerui.ActionNext}
+	target, ok := pendingChapterNavigation(actions, 0, chapters, 4, 20*time.Millisecond)
+	if !ok || target != 1 {
+		t.Fatalf("pending chapter target = %d, active=%v; want chapter 1", target, ok)
+	}
+}
+
 func TestPlaybackNextChapterCancelsCurrentStreamAndRestartsAtChapterBoundary(t *testing.T) {
 	plan := segment.Plan{DocumentID: "book", Segments: []segment.Segment{
 		{ID: "one-a", Seq: 0, MajorUnitID: "chapter-1", SectionPath: []string{"Chapter 1"}},

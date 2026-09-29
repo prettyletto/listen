@@ -42,6 +42,7 @@ const usage = `listen — make readable things listenable
 Usage:
   listen <source> [--translate BCP-47] [--code] [--voice ID] [--speed RATE] [--playback-speed RATE]
   listen <source> --export [DIRECTORY]
+  listen <source> -o <DIRECTORY>
   listen <source> --no-play
   listen - --no-play
   listen help
@@ -54,6 +55,7 @@ Options:
   --playback-speed RATE  Playback rate from 0.5 to 3.0 (default 1)
   --no-play              Generate and cache audio without opening a player
   --export [DIRECTORY]   Create a reusable MP3/M4B audiobook bundle
+  -o DIRECTORY           Export a book bundle to this directory
   -h, --help             Show this help
 
 Commands:
@@ -157,13 +159,19 @@ func parseListenOptions(args []string) (listenOptions, error) {
 				return options, fmt.Errorf("%s does not take a value", name)
 			}
 			options.code = true
-		case "--export":
+		case "--export", "-o":
 			options.exportAudio = true
 			if hasValue {
 				if value == "" {
 					return options, fmt.Errorf("%s needs a directory after '='", name)
 				}
 				options.exportPath = value
+			} else if name == "-o" {
+				if i+1 >= len(args) || args[i+1] == "" || strings.HasPrefix(args[i+1], "-") {
+					return options, errors.New("-o needs an output directory")
+				}
+				options.exportPath = args[i+1]
+				i++
 			} else if len(positional) == 1 && i+1 < len(args) && args[i+1] != "" && !strings.HasPrefix(args[i+1], "-") {
 				options.exportPath = args[i+1]
 				i++

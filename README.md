@@ -13,6 +13,7 @@ listen README.md
 listen main.go --code
 listen docs/
 listen book.epub --export
+listen book.epub -o ./book-audio/
 ```
 
 In an interactive Linux terminal, a book with chapters opens a start picker:
@@ -23,6 +24,12 @@ then **Enter** to start. While audio plays, use **Space** to pause/resume,
 **Left/Right** to seek by five seconds, **p/n** to move between chapters, and
 **q** or **Ctrl-C** to stop and save your place. Piped and other non-interactive
 runs do not open the picker.
+
+Use `listen book.epub -o ./book-audio/` to build a reusable book bundle instead
+of opening playback. It contains the full-book MP3 and M4B, separate chapter
+MP3s, a chapter playlist, and a manifest. Completed speech is cached as it is
+generated, so rerunning after an interruption continues without regenerating
+finished audio. `-o DIRECTORY` is shorthand for `--export DIRECTORY`.
 
 `listen docs/` reads supported documentation files into one ordered session.
 Directory inputs honor applicable `.gitignore` rules and keep each block's

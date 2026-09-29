@@ -34,8 +34,9 @@ current position unchanged and explains why it could not move farther.
 Chapter navigation checkpoints the current position, cancels the active
 translation/speech stream, and starts a new stream at the selected boundary.
 Teardown errors from the replaced stream are ignored so they do not appear as
-source failures. Completed translations and audio remain cached and are reused.
-Every new stream still commits segments in sequence.
+source failures. A chapter key already queued when a stream reports an error is
+honored before that error is shown. Completed translations and audio remain
+cached and are reused. Every new stream still commits segments in sequence.
 
 ## Streaming playlist
 
