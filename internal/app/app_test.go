@@ -3,7 +3,9 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -109,13 +111,6 @@ func TestParseListenOptionsAcceptsExportWithOptionalDirectory(t *testing.T) {
 	}
 }
 
-func TestRunRejectsUnimplementedFormatsHonestly(t *testing.T) {
-	err := Run(context.Background(), []string{"book.pdf"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	if !apperr.HasCode(err, "format_not_ready") {
-		t.Fatalf("got %v, want format_not_ready", err)
-	}
-}
-
 func TestParseDocumentSelectsEPUBParser(t *testing.T) {
 	path := "../../testdata/epub3_nested/nested.epub"
 	doc, err := parseDocument(context.Background(), source.Input{Name: "nested.epub", Path: path})
@@ -147,8 +142,25 @@ func TestParseDocumentSelectsHTMLParser(t *testing.T) {
 	if doc.Format != domain.FormatHTML || doc.Metadata.Title != "After the Storm | City Daily" {
 		t.Fatalf("unexpected parsed HTML: format=%q title=%q", doc.Format, doc.Metadata.Title)
 	}
-	if isUnimplementedFormat(path) {
-		t.Fatal("HTML is still treated as an unimplemented format")
+}
+
+func TestParseDocumentSelectsPDFParser(t *testing.T) {
+	for _, name := range []string{"pdftohtml", "pdfimages"} {
+		if _, err := exec.LookPath(name); err != nil {
+			t.Skip("Poppler PDF tools are not installed")
+		}
+	}
+	path := "../../testdata/pdf/born-digital.pdf"
+	doc, err := parseDocument(context.Background(), source.Input{Name: "born-digital.pdf", Path: path})
+	if err != nil {
+		t.Fatalf("parse PDF: %v", err)
+	}
+	wantTitle := "born-digital"
+	if _, err := exec.LookPath("pdfinfo"); err == nil {
+		wantTitle = "The Sample Book"
+	}
+	if doc.Format != domain.FormatPDF || doc.Metadata.Title != wantTitle {
+		t.Fatalf("unexpected parsed PDF: format=%q title=%q", doc.Format, doc.Metadata.Title)
 	}
 }
 
@@ -177,5 +189,60 @@ func TestListenHTMLFixtureSynthesizesSelectedContent(t *testing.T) {
 		if strings.Contains(text, unwanted) {
 			t.Errorf("site chrome reached synthesized speech: %q", unwanted)
 		}
+	}
+}
+
+func TestListenPDFFixtureSynthesizesReconstructedContent(t *testing.T) {
+	for _, name := range []string{"pdftohtml", "pdfimages"} {
+		if _, err := exec.LookPath(name); err != nil {
+			t.Skip("Poppler PDF tools are not installed")
+		}
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	var spoken []string
+	deps := runtimeDeps{
+		startSynth: func(_ context.Context, _ kokoro.Options) (speech.Synthesizer, error) {
+			return appTestSynth{t: t, onRequest: func(request speech.Request) {
+				spoken = append(spoken, request.Segment.SpokenText)
+			}}, nil
+		},
+	}
+	path := "../../testdata/pdf/born-digital.pdf"
+	if err := runWithRuntime(context.Background(), []string{path, "--no-play"}, nil, io.Discard, io.Discard, deps); err != nil {
+		t.Fatalf("listen PDF fixture: %v", err)
+	}
+	text := strings.Join(spoken, " ")
+	for _, wanted := range []string{"Chapter 1: The Beginning", "Left column begins with an opening paragraph", "Right column follows the complete left column"} {
+		if !strings.Contains(text, wanted) {
+			t.Errorf("PDF content did not reach synthesized speech: %q missing from %q", wanted, text)
+		}
+	}
+	for _, unwanted := range []string{"The Sample Book", "(1)", "(2)", "(3)"} {
+		if strings.Contains(text, unwanted) {
+			t.Errorf("repeated page furniture reached synthesized speech: %q", unwanted)
+		}
+	}
+}
+
+func TestRunReportsScannedPDFAsNeedingOCR(t *testing.T) {
+	for _, name := range []string{"pdftohtml", "pdfimages"} {
+		if _, err := exec.LookPath(name); err != nil {
+			t.Skip("Poppler PDF tools are not installed")
+		}
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	err := Run(context.Background(), []string{"../../testdata/pdf/scanned.pdf", "--no-play"}, strings.NewReader(""), io.Discard, io.Discard)
+	if !apperr.HasCode(err, "pdf_needs_ocr") {
+		t.Fatalf("got %v, want actionable pdf_needs_ocr error", err)
+	}
+	var appError *apperr.Error
+	if !errors.As(err, &appError) || !strings.Contains(appError.Hint, "OCR is not available") {
+		t.Fatalf("scanned-PDF error did not explain the current limitation: %#v", appError)
 	}
 }

@@ -1,0 +1,98 @@
+{
+  "format": "pdf",
+  "blocks": [
+    {
+      "seq": 0,
+      "kind": "heading",
+      "text": "Chapter 1: The Beginning",
+      "level": 1,
+      "page": 1
+    },
+    {
+      "seq": 1,
+      "kind": "paragraph",
+      "text": "Left column begins with an opening paragraph. It continues across a second positioned line.",
+      "page": 1
+    },
+    {
+      "seq": 2,
+      "kind": "paragraph",
+      "text": "A new paragraph starts after the larger gap. The final left column line ends this section.",
+      "page": 1
+    },
+    {
+      "seq": 3,
+      "kind": "paragraph",
+      "text": "Right column follows the complete left column. Its lines remain in their own reading order.",
+      "page": 1
+    },
+    {
+      "seq": 4,
+      "kind": "paragraph",
+      "text": "A second paragraph stays on the right. The final right column line completes the page.",
+      "page": 1
+    },
+    {
+      "seq": 5,
+      "kind": "heading",
+      "text": "Chapter 2: The Middle",
+      "level": 1,
+      "page": 2
+    },
+    {
+      "seq": 6,
+      "kind": "paragraph",
+      "text": "Left column begins with an opening paragraph. It continues across a second positioned line.",
+      "page": 2
+    },
+    {
+      "seq": 7,
+      "kind": "paragraph",
+      "text": "A new paragraph starts after the larger gap. The final left column line ends this section.",
+      "page": 2
+    },
+    {
+      "seq": 8,
+      "kind": "paragraph",
+      "text": "Right column follows the complete left column. Its lines remain in their own reading order.",
+      "page": 2
+    },
+    {
+      "seq": 9,
+      "kind": "paragraph",
+      "text": "A second paragraph stays on the right. The final right column line completes the page.",
+      "page": 2
+    },
+    {
+      "seq": 10,
+      "kind": "heading",
+      "text": "Appendix: Afterword",
+      "level": 1,
+      "page": 3
+    },
+    {
+      "seq": 11,
+      "kind": "paragraph",
+      "text": "Left column begins with an opening paragraph. It continues across a second positioned line.",
+      "page": 3
+    },
+    {
+      "seq": 12,
+      "kind": "paragraph",
+      "text": "A new paragraph starts after the larger gap. The final left column line ends this section.",
+      "page": 3
+    },
+    {
+      "seq": 13,
+      "kind": "paragraph",
+      "text": "Right column follows the complete left column. Its lines remain in their own reading order.",
+      "page": 3
+    },
+    {
+      "seq": 14,
+      "kind": "paragraph",
+      "text": "A second paragraph stays on the right. The final right column line completes the page.",
+      "page": 3
+    }
+  ]
+}

@@ -6,6 +6,8 @@
 - Goldmark Markdown parser: https://github.com/yuin/goldmark
 - Go HTML parser: https://pkg.go.dev/golang.org/x/net/html
 - mpv manual / playlist and IPC behavior: https://mpv.io/manual/stable/
+- Poppler command-line tools (`pdftohtml`, `pdfimages`, `pdfinfo`): https://poppler.freedesktop.org/
+- QPDF JSON outline fields: https://qpdf.readthedocs.io/en/latest/json.html
 - giraffesyo/pdf candidate: https://github.com/giraffesyo/pdf
 - pdfcpu candidate for bookmarks/metadata: https://github.com/pdfcpu/pdfcpu
 

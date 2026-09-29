@@ -17,6 +17,14 @@ Everything complicated lives behind those commands: structure parsing, resumable
 
 This repository is an implementation foundation. The Python prototype under `reference/python-prototype/` is the behavioral reference for the existing TTS/cache/section UX; the new architecture is Go-first, with Python limited to long-lived Kokoro and optional local translation inference workers.
 
+Text-based PDFs are supported on a best-effort basis. PDF reading requires
+Poppler's `pdftohtml` and `pdfimages`; on Arch Linux, install them with
+`sudo pacman -S poppler`.
+`qpdf` is optional and adds PDF bookmark navigation. Scanned PDFs without a
+readable text layer report that OCR is unavailable; `listen` does not run OCR.
+PDFs are limited to 256 MiB, 5,000 pages, bounded extractor output, and two
+minutes per external PDF tool.
+
 On Linux x86_64, install `uv`, mpv, and FFmpeg, then run `listen setup` once.
 Setup creates a private Python 3.13 environment, installs the hash-locked
 Kokoro and CPU translation-worker dependencies, downloads selected speech

@@ -1,0 +1,53 @@
+%!PS-Adobe-3.0
+%%Title: The Sample Book
+%%Pages: 3
+%%BoundingBox: 0 0 612 792
+
+/pdfmark where { pop } { userdict /pdfmark /cleartomark load put } ifelse
+[ /Title (Chapter 1: The Beginning) /Page 1 /View [/Fit] /OUT pdfmark
+[ /Title (A Useful Detail) /Page 1 /View [/Fit] /Count 0 /OUT pdfmark
+[ /Title (Chapter 2: The Middle) /Page 2 /View [/Fit] /OUT pdfmark
+[ /Title (Appendix: Afterword) /Page 3 /View [/Fit] /OUT pdfmark
+
+/header {
+  /Helvetica findfont 10 scalefont setfont
+  50 775 moveto (The Sample Book) show
+} bind def
+/footer {
+  /Helvetica findfont 10 scalefont setfont
+  300 24 moveto show
+} bind def
+/body {
+  /Helvetica findfont 11 scalefont setfont
+  50 690 moveto (Left column begins with an opening paragraph.) show
+  50 674 moveto (It continues across a second positioned line.) show
+  50 642 moveto (A new paragraph starts after the larger gap.) show
+  50 626 moveto (The final left column line ends this section.) show
+  330 690 moveto (Right column follows the complete left column.) show
+  330 674 moveto (Its lines remain in their own reading order.) show
+  330 642 moveto (A second paragraph stays on the right.) show
+  330 626 moveto (The final right column line completes the page.) show
+} bind def
+
+/Helvetica-Bold findfont 20 scalefont setfont
+150 720 moveto (Chapter 1: The Beginning) show
+header
+body
+(1) footer
+showpage
+
+/Helvetica-Bold findfont 20 scalefont setfont
+160 720 moveto (Chapter 2: The Middle) show
+header
+body
+(2) footer
+showpage
+
+/Helvetica-Bold findfont 20 scalefont setfont
+205 720 moveto (Appendix: Afterword) show
+header
+body
+(3) footer
+showpage
+
+%%EOF

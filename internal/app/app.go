@@ -26,6 +26,7 @@ import (
 	epubsource "github.com/prettyletto/listen/internal/source/epub"
 	htmlsource "github.com/prettyletto/listen/internal/source/html"
 	markdownsource "github.com/prettyletto/listen/internal/source/markdown"
+	pdfsource "github.com/prettyletto/listen/internal/source/pdf"
 	textsource "github.com/prettyletto/listen/internal/source/text"
 	"github.com/prettyletto/listen/internal/speech"
 	"github.com/prettyletto/listen/internal/speech/kokoro"
@@ -59,7 +60,7 @@ Commands:
   models                 List available OpenAI translation models
   doctor                 Inspect local runtime and player readiness
 
-Current sources: UTF-8 text files, Markdown files, HTML documents, and EPUB books.
+Current sources: UTF-8 text files, Markdown files, HTML documents, EPUB books, and text-based PDFs.
 `
 
 type listenOptions struct {
@@ -299,9 +300,6 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 		input = source.Input{Name: "stdin.txt", Path: "stdin", R: stdin}
 	} else {
 		path := expandHome(options.source)
-		if isUnimplementedFormat(path) {
-			return apperr.New("format_not_ready", "This file format is not supported yet.", "Use a UTF-8 plain text file for now.", nil)
-		}
 		input = source.Input{Name: filepath.Base(path), Path: path}
 	}
 	readerConfig, _, err := settings.Load(userPaths.ConfigDir)
@@ -359,8 +357,23 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 		case errors.Is(err, textsource.ErrInvalidUTF8):
 			return apperr.New("source_encoding", "The source is not valid UTF-8 text.", "Save it as UTF-8 and run listen again.", err)
 		case errors.Is(err, textsource.ErrEmptySource):
+			if strings.EqualFold(filepath.Ext(input.Name), ".pdf") {
+				return apperr.New("pdf_no_readable_text", "No readable text was found in this PDF.", "Choose a PDF with an extractable text layer; OCR is not available yet.", err)
+			}
 			return apperr.New("source_empty", "The source has no readable text.", "Choose a file that contains text.", err)
 		default:
+			if strings.EqualFold(filepath.Ext(input.Name), ".pdf") {
+				if errors.Is(err, pdfsource.ErrNeedsOCR) {
+					return apperr.New("pdf_needs_ocr", "This PDF does not contain enough readable text.", "Choose a text-based PDF. Scanned-page OCR is not available yet.", err)
+				}
+				if errors.Is(err, pdfsource.ErrReaderUnavailable) {
+					return apperr.New("pdf_reader_unavailable", "PDF reading is unavailable on this computer.", "Install Poppler utilities, then run listen again.", err)
+				}
+				if errors.Is(err, pdfsource.ErrResourceLimit) {
+					return apperr.New("pdf_resource_limit", "This PDF exceeds the reader's processing limits.", "Split the PDF into smaller files and try again.", err)
+				}
+				return apperr.New("source_read_failed", "Could not read this PDF document.", "Check that the file is a valid, readable PDF and try again.", err)
+			}
 			if strings.EqualFold(filepath.Ext(input.Name), ".epub") {
 				return apperr.New("source_read_failed", "Could not read this EPUB book.", "Check that the file is a valid EPUB and try again.", err)
 			}
@@ -778,7 +791,7 @@ func startAuthorizedCloudTranslator(ctx context.Context, config settings.Config,
 }
 
 func parseDocument(ctx context.Context, input source.Input) (*domain.Document, error) {
-	selected, err := source.SelectParser(ctx, input, epubsource.NewParser(), htmlsource.NewParser(), markdownsource.NewParser(), textsource.NewParser())
+	selected, err := source.SelectParser(ctx, input, epubsource.NewParser(), htmlsource.NewParser(), pdfsource.NewParser(), markdownsource.NewParser(), textsource.NewParser())
 	if err != nil {
 		return nil, err
 	}
@@ -811,15 +824,6 @@ func expandHome(path string) string {
 		}
 	}
 	return path
-}
-
-func isUnimplementedFormat(path string) bool {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".pdf":
-		return true
-	default:
-		return false
-	}
 }
 
 func isHTMLPath(path string) bool {

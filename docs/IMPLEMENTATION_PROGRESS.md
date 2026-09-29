@@ -265,7 +265,34 @@ cache, and fake synthesis. `go test ./...` and `go vet ./...` pass.
 **Reviewer:** Approved by an independent read-only reviewer with no remaining
 P0–P2 findings.
 
-## Next: Slice 10 — PDF best-effort
+## Slice 10 — PDF best-effort
 
-Slice 9 exit criteria and review are complete. Continue with PDF parsing only
-after this checkpoint.
+**Status:** Implemented and approved by an independent read-only reviewer;
+automated exit criteria pass.
+
+**Scenario:** text-based PDFs with reasonable structure become listenable;
+scanned PDFs report that OCR is not available.
+
+**Implemented:** Poppler extracts page-positioned text and image regions.
+Repeated page furniture and margin page numbers are suppressed, columns are
+read in column order, and headings are inferred from page typography. PDF
+metadata is retained when present. QPDF bookmarks provide high-confidence
+outline nodes when qpdf is installed; visual heading structure remains the
+fallback. The parser stores a best-effort layout warning and identifies
+scanned-only documents instead of returning an empty reading stream.
+
+**Current limits:** tagged-PDF structure is reported but not consumed. OCR is
+not implemented. PDF reading requires Poppler's `pdftohtml` and `pdfimages`
+commands; qpdf is optional for bookmarks. Input is limited to 256 MiB and
+5,000 pages; extractor output and each external tool runtime are bounded.
+
+**Verified so far:** a three-page golden fixture covers two-column order,
+bookmarks, repeated headers/footers, margin page numbers, and visual headings.
+A scanned fixture verifies the `needs_ocr` error. An app-level `--no-play`
+scenario sends reconstructed text through segmentation and fake synthesis.
+Cancellation stops the extraction process and temporary raster output is
+removed. `gofmt`, `go test ./...`, and `go vet ./...` pass. Manual CLI help
+confirms the documented source list.
+
+**Reviewer:** Approved by an independent read-only reviewer with no remaining
+P0–P2 findings.

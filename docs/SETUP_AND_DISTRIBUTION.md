@@ -36,6 +36,21 @@ The model is stored beneath `$XDG_DATA_HOME/listen/translation`; it does not
 contain user text. The current translation installer supports English to
 Brazilian Portuguese only.
 
+## PDF reading
+
+Text-based PDFs are parsed on a best-effort basis and require Poppler's
+`pdftohtml` and `pdfimages` commands. Poppler also provides `pdfinfo`, which
+supplies available title and author metadata. On Arch Linux, install Poppler with
+`sudo pacman -S poppler`. `listen setup` does not download or install PDF tools.
+
+When `qpdf` is installed, its PDF outline is used for bookmark navigation.
+Without it, headings are inferred from page layout and a warning is retained
+with the parsed document. Pages that appear scanned are reported as needing
+OCR; this release does not run OCR.
+To bound local processing of untrusted documents, PDF input is limited to
+256 MiB and 5,000 pages. Extractor output is capped and each external PDF tool
+has a two-minute time limit.
+
 ## Cloud translation
 
 The direct OpenAI adapter is optional and has no setup download. Set
