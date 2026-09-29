@@ -138,6 +138,8 @@ func runPlayback(
 	var display playerScreen
 	if deps.interactivePlayback(stdin, stderr) {
 		model := playerui.NewPlayer(title, chapters, start.ChapterIndex, len(fullPlan.Segments))
+		model.SetProgress(0, len(fullPlan.Segments)-start.StartIndex)
+		model.SetStatus(chapterPreparationStatus(streamOptions.Translator != nil))
 		var err error
 		display, err = deps.startPlaybackScreen(stdin, stderr, model)
 		if err != nil {
@@ -183,9 +185,16 @@ func runPlayback(
 			display.SetChapter(currentChapter)
 			display.SetPaused(false)
 			display.SetProgress(0, len(fullPlan.Segments)-currentIndex)
-			display.SetStatus("Loading " + chapters[currentChapter].Title)
+			display.SetStatus(chapterPreparationStatus(streamOptions.Translator != nil))
 		}
 	}
+}
+
+func chapterPreparationStatus(translating bool) string {
+	if translating {
+		return "Translating and preparing audio"
+	}
+	return "Preparing audio"
 }
 
 func runPlaybackPass(

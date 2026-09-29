@@ -52,6 +52,15 @@ func TestPendingChapterNavigationWinsOverJustCompletedStreamError(t *testing.T) 
 	}
 }
 
+func TestPlaybackPreparationStatusExplainsTranslationWork(t *testing.T) {
+	if got := chapterPreparationStatus(false); got != "Preparing audio" {
+		t.Fatalf("local preparation status = %q", got)
+	}
+	if got := chapterPreparationStatus(true); got != "Translating and preparing audio" {
+		t.Fatalf("translated preparation status = %q", got)
+	}
+}
+
 func TestPlaybackNextChapterCancelsCurrentStreamAndRestartsAtChapterBoundary(t *testing.T) {
 	plan := segment.Plan{DocumentID: "book", Segments: []segment.Segment{
 		{ID: "one-a", Seq: 0, MajorUnitID: "chapter-1", SectionPath: []string{"Chapter 1"}},

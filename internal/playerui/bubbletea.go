@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -26,12 +27,14 @@ type pickerItem struct {
 func (i pickerItem) FilterValue() string { return i.label }
 
 type teaModel struct {
-	screen  Model
-	picker  list.Model
-	actions chan<- Action
-	ready   chan<- struct{}
-	done    <-chan struct{}
-	readyMu *sync.Once
+	screen   Model
+	picker   list.Model
+	spinner  spinner.Model
+	spinning bool
+	actions  chan<- Action
+	ready    chan<- struct{}
+	done     <-chan struct{}
+	readyMu  *sync.Once
 }
 
 func newTeaModel(screen Model, actions chan<- Action, ready chan<- struct{}) *teaModel {
@@ -58,9 +61,14 @@ func newTeaModel(screen Model, actions chan<- Action, ready chan<- struct{}) *te
 	for index := 0; index < screen.cursor; index++ {
 		picker.CursorDown()
 	}
+	activitySpinner := spinner.New(
+		spinner.WithSpinner(spinner.Points),
+		spinner.WithStyle(activitySpinnerStyle),
+	)
 	return &teaModel{
 		screen:  screen,
 		picker:  picker,
+		spinner: activitySpinner,
 		actions: actions,
 		ready:   ready,
 		readyMu: &sync.Once{},
@@ -77,11 +85,25 @@ func resumeLabel(label string) string {
 }
 
 func (m *teaModel) Init() tea.Cmd {
-	return func() tea.Msg { return readyMsg{} }
+	commands := []tea.Cmd{func() tea.Msg { return readyMsg{} }}
+	if m.loadingActive() {
+		m.spinning = true
+		commands = append(commands, m.spinner.Tick)
+	}
+	return tea.Batch(commands...)
 }
 
 func (m *teaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		if !m.loadingActive() {
+			m.spinning = false
+			return m, nil
+		}
+		updated, cmd := m.spinner.Update(msg)
+		m.spinner = updated
+		m.spinning = cmd != nil
+		return m, cmd
 	case readyMsg:
 		if m.ready != nil {
 			m.readyMu.Do(func() { close(m.ready) })
@@ -92,11 +114,12 @@ func (m *teaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizePicker()
 		return m, nil
 	case sessionUpdate:
+		wasLoading := m.loadingActive()
 		m.screen.SetState(msg.state)
 		if msg.phase != 0 {
 			m.screen.SetPhase(msg.phase)
 		}
-		return m, nil
+		return m, m.startLoadingAnimation(wasLoading)
 	case tea.KeyMsg:
 		if m.screen.phase == PhaseSelect {
 			return m.updatePicker(msg)
@@ -132,11 +155,16 @@ func (m *teaModel) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			index := m.picker.GlobalIndex()
 			if index >= 0 && index < len(m.screen.choices) {
+				wasLoading := m.loadingActive()
 				choice := m.screen.choices[index]
 				m.screen.cursor = index
 				m.screen.phase = PhasePreparing
 				m.screen.state.Status = "Preparing " + choice.Label
-				return m, m.dispatch(Action{Kind: ActionStart, Start: choice})
+				commands := []tea.Cmd{m.dispatch(Action{Kind: ActionStart, Start: choice})}
+				if cmd := m.startLoadingAnimation(wasLoading); cmd != nil {
+					commands = append(commands, cmd)
+				}
+				return m, tea.Batch(commands...)
 			}
 		}
 	}
@@ -171,6 +199,25 @@ func (m *teaModel) dispatch(action Action) tea.Cmd {
 	}
 }
 
+func (m *teaModel) loadingActive() bool {
+	if m.screen.phase == PhaseSelect || m.screen.phase == PhaseFinished {
+		return false
+	}
+	if m.screen.phase == PhasePreparing || m.screen.state.SeekPending != 0 {
+		return true
+	}
+	total := max(0, m.screen.state.Total)
+	return total > 0 && clamp(m.screen.state.Ready, 0, total) < total
+}
+
+func (m *teaModel) startLoadingAnimation(wasLoading bool) tea.Cmd {
+	if wasLoading || !m.loadingActive() || m.spinning {
+		return nil
+	}
+	m.spinning = true
+	return m.spinner.Tick
+}
+
 func (m *teaModel) resizePicker() {
 	width, height := m.layoutSize()
 	listHeight := max(1, height-m.pickerChromeLines())
@@ -202,7 +249,7 @@ func (m *teaModel) View() string {
 	} else if m.screen.phase == PhaseSelect {
 		content = m.pickerView()
 	} else {
-		content = renderPlayer(m.screen)
+		content = renderPlayer(m.screen, m.spinner.View())
 	}
 	return content
 }
@@ -342,21 +389,22 @@ func centerBlock(terminalWidth int, value string) string {
 }
 
 var (
-	eyebrowStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1")).Bold(true)
-	titleStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#F0F4FA")).Bold(true)
-	mutedStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#AAB5C8"))
-	footerStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#B7C2D5"))
-	separatorStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#344155"))
-	rowStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("#CDD5E3"))
-	selectedRowStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#F5FAFF")).Background(lipgloss.Color("#263A4E")).Bold(true).PaddingLeft(1)
-	bufferActiveStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1"))
-	bufferTrackStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#344155"))
-	timelineActiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1")).Bold(true)
-	timelineKnobStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#F0F4FA")).Bold(true)
-	playerFrameStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#344155")).Padding(1, 2)
+	eyebrowStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1")).Bold(true)
+	titleStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("#F0F4FA")).Bold(true)
+	mutedStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("#AAB5C8"))
+	footerStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#B7C2D5"))
+	separatorStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#344155"))
+	rowStyle             = lipgloss.NewStyle().Foreground(lipgloss.Color("#CDD5E3"))
+	selectedRowStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#F5FAFF")).Background(lipgloss.Color("#263A4E")).Bold(true).PaddingLeft(1)
+	bufferActiveStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1"))
+	bufferTrackStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#344155"))
+	activitySpinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1")).Bold(true)
+	timelineActiveStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1")).Bold(true)
+	timelineKnobStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#F0F4FA")).Bold(true)
+	playerFrameStyle     = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#344155")).Padding(1, 2)
 )
 
-func renderPlayer(screen Model) string {
+func renderPlayer(screen Model, spinnerView string) string {
 	framed := screen.width >= 64 && screen.height >= 22
 	innerWidth := max(1, min(screen.width, 104)-4)
 	if framed {
@@ -377,11 +425,37 @@ func renderPlayer(screen Model) string {
 	if status == "" {
 		status = "Preparing opening audio"
 	}
-	statusLine := statusStyle(status).Padding(0, 1).Render(clip("● "+status, max(1, innerWidth-2)))
-	readyLine := readinessLine(screen.state, innerWidth)
+	preparing := screen.phase == PhasePreparing || isLoadingStatus(status)
+	seeking := screen.state.SeekPending != 0
+	building := screen.phase == PhasePlaying && screen.state.Total > 0 &&
+		clamp(screen.state.Ready, 0, screen.state.Total) < screen.state.Total && !preparing && !seeking
+	statusMarker := "●"
+	if (preparing || seeking) && spinnerView != "" {
+		statusMarker = spinnerView
+	}
+	statusTextWidth := max(1, innerWidth-2-lipgloss.Width(statusMarker)-1)
+	statusLine := statusStyle(status).Padding(0, 1).Render(
+		statusMarker + " " + clip(status, statusTextWidth),
+	)
+	readyLabel := "AUDIO READY"
+	if preparing {
+		readyLabel = "READY"
+	} else if building {
+		readyLabel = "BUILDING AUDIO"
+	}
+	readySpinner := ""
+	if building {
+		readySpinner = spinnerView
+	}
+	readyLine := readinessLine(screen.state, innerWidth, readyLabel, readySpinner)
 	progressLine := readyLine
 	if screen.state.PlaybackKnown {
 		progressLine = timelineLine(screen.state, innerWidth)
+		if building && tight && screen.height < 12 {
+			// At the minimum supported height there is no separate readiness
+			// row. Give the audio-build counter and spinner the progress slot.
+			progressLine = readyLine
+		}
 	}
 	positionLine := ""
 	if screen.state.PlaybackKnown {
@@ -394,7 +468,9 @@ func renderPlayer(screen Model) string {
 		}
 	}
 	helpLines := []string{footerStyle.Width(innerWidth).Render(clip("←/→ seek 5s   p/n chapter   Space pause   q stop", innerWidth))}
-	if innerWidth < 52 {
+	if screen.phase == PhasePreparing {
+		helpLines = []string{footerStyle.Width(innerWidth).Render(clip("q stop · waiting for first audio", innerWidth))}
+	} else if innerWidth < 52 {
 		helpLines = []string{
 			footerStyle.Width(innerWidth).Render(clip("←/→ seek ±5s · p/n chapter", innerWidth)),
 			footerStyle.Width(innerWidth).Render(clip("Space pause · q stop", innerWidth)),
@@ -435,12 +511,22 @@ func renderPlayer(screen Model) string {
 	return centerBlock(screen.width, body)
 }
 
-func readinessLine(state State, width int) string {
+func readinessLine(state State, width int, label, indicator string) string {
 	total := max(0, state.Total)
 	ready := clamp(state.Ready, 0, total)
-	label := fmt.Sprintf("AUDIO READY %d/%d", ready, total)
-	barWidth := max(4, min(32, width-lipgloss.Width(label)-1))
-	return lipgloss.JoinHorizontal(lipgloss.Left, mutedStyle.Render(label+" "), readinessBar(ready, total, barWidth))
+	text := clip(fmt.Sprintf("%s %d/%d", label, ready, total), max(1, width-lipgloss.Width(indicator)-2))
+	barWidth := min(32, max(1, width-lipgloss.Width(indicator)-lipgloss.Width(text)-1))
+	return lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		indicator,
+		mutedStyle.Render(text+" "),
+		readinessBar(ready, total, barWidth),
+	)
+}
+
+func isLoadingStatus(status string) bool {
+	lower := strings.ToLower(strings.TrimSpace(status))
+	return strings.HasPrefix(lower, "preparing") || strings.HasPrefix(lower, "loading") || strings.HasPrefix(lower, "translating")
 }
 
 func readinessBar(ready, total, width int) string {

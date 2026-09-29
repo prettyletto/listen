@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 func TestPickerStartsAtFullBookByDefault(t *testing.T) {
@@ -121,7 +122,7 @@ func TestBubbleTeaPickerNavigationSearchAndSelection(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Enter did not dispatch the selected start point")
 	}
-	cmd()
+	runPickerCommand(model, cmd)
 	select {
 	case action := <-actions:
 		if action.Kind != ActionStart || action.Start.ChapterIndex != 1 || action.Start.StartIndex != 3 {
@@ -191,6 +192,18 @@ func TestPlayerShowsStyledTimelineAndPendingSeekFeedback(t *testing.T) {
 	}
 }
 
+func TestPlayerShowsWhenBackgroundAudioIsStillBuilding(t *testing.T) {
+	model := NewPlayer("Example Book", []Chapter{{Title: "Opening"}}, 0, 10)
+	model.SetPhase(PhasePlaying)
+	model.SetState(State{Status: "Playing", Ready: 3, Total: 10, PlaybackKnown: true})
+	view := model.View()
+	for _, expected := range []string{"Playing", "BUILDING AUDIO 3/10"} {
+		if !strings.Contains(view, expected) {
+			t.Errorf("playing view is missing %q:\n%s", expected, view)
+		}
+	}
+}
+
 func TestViewsFitResponsiveTerminalWidthsAndHeights(t *testing.T) {
 	chapters := []Chapter{{Title: "日本語の章 — A title longer than a narrow terminal"}}
 	for _, size := range []struct{ width, height int }{
@@ -215,7 +228,7 @@ func TestViewsFitResponsiveTerminalWidthsAndHeights(t *testing.T) {
 			name string
 			text string
 		}{{"picker", picker.View()}, {"filtered picker", filteredPicker.View()}, {"player", player.View()}} {
-			if view.name == "player" && size.width == 40 && size.height == 14 && !strings.Contains(view.text, "AUDIO READY") {
+			if view.name == "player" && size.width == 40 && size.height == 14 && !strings.Contains(view.text, "READY") {
 				t.Errorf("player at %dx%d hides streaming readiness feedback:\n%s", size.width, size.height, view.text)
 			}
 			if view.name == "filtered picker" && size.width == 32 && !strings.Contains(view.text, "q cancel") {
@@ -230,6 +243,88 @@ func TestViewsFitResponsiveTerminalWidthsAndHeights(t *testing.T) {
 				t.Errorf("%s at %dx%d uses %d rows:\n%s", view.name, size.width, size.height, got, view.text)
 			}
 		}
+	}
+}
+
+func TestPlayerShowsLoadingActivityAndStopsSpinnerWhenAudioIsReady(t *testing.T) {
+	model := newTeaModel(NewPlayer("Example Book", []Chapter{{Title: "Opening"}}, 0, 6), nil, nil)
+	if cmd := model.Init(); cmd == nil || !model.spinning {
+		t.Fatal("player did not start its loading animation")
+	}
+	view := model.View()
+	for _, expected := range []string{"Preparing opening audio", "READY 0/6", "q stop"} {
+		if !strings.Contains(view, expected) {
+			t.Errorf("loading view is missing %q:\n%s", expected, view)
+		}
+	}
+
+	firstFrame := model.spinner.View()
+	_, cmd := model.Update(model.spinner.Tick())
+	if cmd == nil || model.spinner.View() == firstFrame {
+		t.Fatal("spinner did not advance and schedule its next frame")
+	}
+
+	_, _ = model.Update(sessionUpdate{
+		state: State{Status: "Playing", Ready: 6, Total: 6, PlaybackKnown: true},
+		phase: PhasePlaying,
+	})
+	_, cmd = model.Update(model.spinner.Tick())
+	if cmd != nil || model.spinning {
+		t.Fatal("spinner kept running after audio preparation completed")
+	}
+
+	_, cmd = model.Update(sessionUpdate{
+		state: State{Status: "Buffering +00:05", Ready: 6, Total: 6, SeekPending: 5 * time.Second},
+		phase: PhasePlaying,
+	})
+	if cmd == nil || !model.spinning {
+		t.Fatal("spinner did not restart when a buffered seek began")
+	}
+
+	_, _ = model.Update(sessionUpdate{
+		state: State{Status: "Playing", Ready: 6, Total: 6, PlaybackKnown: true},
+		phase: PhasePlaying,
+	})
+	_, _ = model.Update(model.spinner.Tick())
+	if model.spinning {
+		t.Fatal("spinner kept running after buffered seek completed")
+	}
+	_, cmd = model.Update(sessionUpdate{
+		state: State{Status: "Preparing audio", Ready: 0, Total: 6},
+		phase: PhasePreparing,
+	})
+	if cmd == nil || !model.spinning {
+		t.Fatal("spinner did not restart when chapter preparation began")
+	}
+}
+
+func TestShortestPlayerLayoutKeepsColoredAudioBuildProgressVisible(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previousProfile) })
+
+	model := newTeaModel(NewPlayer("Example Book", []Chapter{{Title: "Opening"}}, 0, 10), nil, nil)
+	model.screen.SetSize(32, 10)
+	model.screen.SetPhase(PhasePlaying)
+	model.screen.SetState(State{Status: "Playing", Ready: 3, Total: 10, PlaybackKnown: true})
+	if cmd := model.Init(); cmd == nil || !model.spinning {
+		t.Fatal("background audio generation did not start its activity animation")
+	}
+
+	view := model.View()
+	if !strings.Contains(view, "BUILDING AUDIO 3/10") {
+		t.Fatalf("short player layout hides the audio-build count:\n%s", view)
+	}
+	if !strings.Contains(view, "━") {
+		t.Fatalf("short player layout hides the determinate progress bar:\n%s", view)
+	}
+	for lineNumber, line := range strings.Split(view, "\n") {
+		if got := lipgloss.Width(line); got > 32 {
+			t.Errorf("colored player line %d uses %d terminal cells, want at most 32", lineNumber, got)
+		}
+	}
+	if got := lipgloss.Height(view); got > 10 {
+		t.Fatalf("short player view uses %d rows, want at most 10:\n%s", got, view)
 	}
 }
 

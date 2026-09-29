@@ -125,6 +125,13 @@ func (m *Model) SetPhase(phase Phase) { m.phase = phase }
 
 func (m *Model) SetState(state State) { m.state = state }
 
+func (m *Model) SetStatus(status string) { m.state.Status = status }
+
+func (m *Model) SetProgress(ready, total int) {
+	m.state.Ready = max(0, ready)
+	m.state.Total = max(0, total)
+}
+
 func (m Model) Phase() Phase { return m.phase }
 
 func (m Model) SelectedStart() (StartPoint, bool) {

@@ -24,12 +24,17 @@ JSON IPC:
 - `q` or `Ctrl-C`: stop and save the current position.
 
 The player screen shows playback progress within the current passage, the
-passage number, how much audio is ready, and the available controls. A seek
-into audio that has not been generated yet pauses playback and shows a
-buffering message. Listen retries the seek as ordered audio becomes ready,
-then resumes if playback was running before the seek. If playback was already
-paused, it stays paused. A seek past the end of a completed stream leaves the
-current position unchanged and explains why it could not move farther.
+passage number, how much audio is ready, and the available controls. While
+Listen prepares the first audio, changes chapters, buffers a seek, or builds
+later audio in the background, an animated indicator appears beside the
+current activity and the ready count continues to show completed work. During
+initial preparation, `q` remains available to stop; playback controls become
+available when playback starts. A seek into audio that has not been generated
+yet pauses playback and shows a buffering message. Listen retries the seek as
+ordered audio becomes ready, then resumes if playback was running before the
+seek. If playback was already paused, it stays paused. A seek past the end of a
+completed stream leaves the current position unchanged and explains why it
+could not move farther.
 
 Chapter navigation checkpoints the current position, cancels the active
 translation/speech stream, and starts a new stream at the selected boundary.
