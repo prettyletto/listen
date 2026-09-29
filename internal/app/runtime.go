@@ -10,6 +10,7 @@ import (
 
 	"github.com/prettyletto/listen/internal/paths"
 	"github.com/prettyletto/listen/internal/playback"
+	"github.com/prettyletto/listen/internal/playerui"
 	"github.com/prettyletto/listen/internal/settings"
 	"github.com/prettyletto/listen/internal/setup"
 	"github.com/prettyletto/listen/internal/speech"
@@ -28,6 +29,10 @@ type runtimeDeps struct {
 	startCloudTranslator func(context.Context, settings.Config) (translate.Translator, error)
 	discoverCloudModels  func(context.Context, settings.Config) ([]string, error)
 	confirmCloudFallback func(io.Reader, io.Writer, string) (bool, error)
+	interactiveInput     func(io.Reader) bool
+	interactivePlayback  func(io.Reader, io.Writer) bool
+	chooseStart          func(context.Context, io.Reader, io.Writer, playerui.Model) (playerui.StartPoint, error)
+	startPlaybackScreen  func(io.Reader, io.Writer, playerui.Model) (playerScreen, error)
 	translator           translate.Translator
 	startupBuffer        time.Duration
 	sessionPollInterval  time.Duration
@@ -82,6 +87,20 @@ func (deps runtimeDeps) withDefaults() runtimeDeps {
 	if deps.confirmCloudFallback == nil {
 		deps.confirmCloudFallback = confirmCloudFallback
 	}
+	if deps.interactiveInput == nil {
+		deps.interactiveInput = isInteractiveTerminal
+	}
+	if deps.interactivePlayback == nil {
+		deps.interactivePlayback = playerui.Interactive
+	}
+	if deps.chooseStart == nil {
+		deps.chooseStart = playerui.ChooseStart
+	}
+	if deps.startPlaybackScreen == nil {
+		deps.startPlaybackScreen = func(input io.Reader, output io.Writer, model playerui.Model) (playerScreen, error) {
+			return playerui.StartPlayback(input, output, model)
+		}
+	}
 	if deps.sessionPollInterval <= 0 {
 		deps.sessionPollInterval = time.Second
 	}
@@ -89,6 +108,15 @@ func (deps runtimeDeps) withDefaults() runtimeDeps {
 		deps.startupBuffer = 20 * time.Second
 	}
 	return deps
+}
+
+func isInteractiveTerminal(input io.Reader) bool {
+	file, ok := input.(*os.File)
+	if !ok || file != os.Stdin {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 func confirmCloudFallback(stdin io.Reader, stderr io.Writer, prompt string) (bool, error) {

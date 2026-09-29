@@ -2,6 +2,31 @@
 
 Use mpv as a playback engine, not as the orchestrator.
 
+## Start selection and player controls
+
+In an interactive Linux terminal, a document with multiple playable major
+units opens a start picker before speech generation begins. The default choice
+reads the whole book from its beginning when there is no unfinished session.
+With an unfinished session, the picker defaults to the saved position. It also
+offers the full book and each playable chapter or major section. Choosing a
+chapter starts at its first segment and continues through the rest of the
+document. Non-interactive runs use the saved position when available, or start
+at the beginning.
+
+During playback, Listen owns the terminal controls while mpv plays audio over
+JSON IPC:
+
+- `Space`: pause or resume;
+- `Left` / `p`: previous chapter or major section;
+- `Right` / `n`: next chapter or major section;
+- `q` or `Ctrl-C`: stop and save the current position.
+
+The player screen shows the current chapter, current segment and offset, audio
+readiness, and the available controls. Chapter navigation checkpoints the
+current position, cancels the active translation/speech stream, and starts a
+new stream at the selected boundary. Completed translations and audio remain
+cached and are reused. Every new stream still commits segments in sequence.
+
 ## Streaming playlist
 
 Go owns the ordered queue. Once initial audio buffer is ready:
@@ -15,18 +40,11 @@ mpv's playlist append semantics make segment-by-segment playback possible withou
 
 ## Chapter navigation
 
-Maintain mapping from segment sequence to major unit. Next/previous chapter commands seek to the first audio segment of the corresponding unit, whether the full chapter has already generated or needs priority generation.
-
-## Priority generation
-
-If the user jumps ahead:
-
-- cancel speculative work that is not reusable only if necessary;
-- raise requested major unit to the front of the generation scheduler;
-- preserve deterministic sequence within the selected playback path;
-- do not delete already cached artifacts.
-
-This is post-v1 unless simple chapter navigation comes for free.
+Map every segment sequence to its major unit. Previous and next move to the
+first audio segment of the neighboring unit. Listen cancels the active stream
+and creates a suffix plan from that boundary; it reuses cache entries and does
+not delete completed artifacts. No speculative work from the canceled stream
+may be appended after the jump.
 
 ## Resume
 

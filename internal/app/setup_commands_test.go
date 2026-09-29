@@ -28,6 +28,7 @@ func TestSetupCommandInstallsSelectedVoiceAndSavesAfterHealthCheck(t *testing.T)
 	t.Setenv("XDG_CONFIG_HOME", configHome)
 	var provisions, starts int
 	deps := runtimeDeps{
+		interactiveInput: func(io.Reader) bool { return true },
 		provisionSpeech: func(context.Context, paths.Paths, io.Writer, io.Writer) error {
 			provisions++
 			return nil
@@ -38,7 +39,7 @@ func TestSetupCommandInstallsSelectedVoiceAndSavesAfterHealthCheck(t *testing.T)
 		},
 	}
 	var stdout bytes.Buffer
-	if err := runWithRuntime(context.Background(), []string{"setup"}, strings.NewReader("pt-BR\n"), &stdout, io.Discard, deps); err != nil {
+	if err := runWithRuntime(context.Background(), []string{"setup"}, strings.NewReader("pt-BR\nn\n\n"), &stdout, io.Discard, deps); err != nil {
 		t.Fatal(err)
 	}
 	userPaths, err := paths.FromEnv()
@@ -63,10 +64,10 @@ func TestSetupCommandInstallsSelectedVoiceAndSavesAfterHealthCheck(t *testing.T)
 	}
 
 	stdout.Reset()
-	if err := runWithRuntime(context.Background(), []string{"setup"}, strings.NewReader("en-US\n"), &stdout, io.Discard, deps); err != nil {
+	if err := runWithRuntime(context.Background(), []string{"setup"}, strings.NewReader("pt-BR\nn\n\n"), &stdout, io.Discard, deps); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(stdout.String(), "Choose a listening language") || provisions != 2 || starts != 2 {
+	if !strings.Contains(stdout.String(), "Listening languages") || provisions != 2 || starts != 2 {
 		t.Fatalf("repeat setup output=%q provisions=%d worker starts=%d", stdout.String(), provisions, starts)
 	}
 }
@@ -79,6 +80,7 @@ func TestSetupInstallsAndChecksTheRequestedLocalTranslationPair(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 	var provisions, speechStarts, installs, translatorStarts int
 	deps := runtimeDeps{
+		interactiveInput: func(io.Reader) bool { return true },
 		provisionSpeech: func(context.Context, paths.Paths, io.Writer, io.Writer) error {
 			provisions++
 			return nil
@@ -97,7 +99,7 @@ func TestSetupInstallsAndChecksTheRequestedLocalTranslationPair(t *testing.T) {
 		},
 	}
 	var stdout bytes.Buffer
-	if err := runWithRuntime(context.Background(), []string{"setup", "--translate", "en:pt-BR"}, strings.NewReader("en-US\n"), &stdout, io.Discard, deps); err != nil {
+	if err := runWithRuntime(context.Background(), []string{"setup", "--translate", "en:pt-BR"}, strings.NewReader("en-US\n\n\n"), &stdout, io.Discard, deps); err != nil {
 		t.Fatal(err)
 	}
 	userPaths, err := paths.FromEnv()
@@ -116,6 +118,55 @@ func TestSetupInstallsAndChecksTheRequestedLocalTranslationPair(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "local translation for en to pt-BR") || !strings.Contains(stdout.String(), "Source text stays on this device") {
 		t.Fatalf("translation setup output = %q", stdout.String())
+	}
+}
+
+func TestSetupWizardCanConfigureMultipleLanguagesAndLocalTranslation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
+	var speechStarts, installs, translatorStarts int
+	deps := runtimeDeps{
+		interactiveInput: func(io.Reader) bool { return true },
+		provisionSpeech:  func(context.Context, paths.Paths, io.Writer, io.Writer) error { return nil },
+		startSynth: func(context.Context, kokoro.Options) (speech.Synthesizer, error) {
+			speechStarts++
+			return appTestSynth{t: t}, nil
+		},
+		installTranslator: func(context.Context, paths.Paths) error {
+			installs++
+			return nil
+		},
+		startTranslator: func(context.Context, paths.Paths) (translate.Translator, error) {
+			translatorStarts++
+			return &testkit.FakeTranslator{}, nil
+		},
+	}
+	var stdout bytes.Buffer
+	input := strings.NewReader("1\nyes\n2\n3\n")
+	if err := runWithRuntime(context.Background(), []string{"setup"}, input, &stdout, io.Discard, deps); err != nil {
+		t.Fatal(err)
+	}
+	userPaths, err := paths.FromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, found, err := settings.Load(userPaths.ConfigDir)
+	if err != nil || !found {
+		t.Fatalf("setup config found=%v err=%v", found, err)
+	}
+	if !config.SetupComplete || config.Speech.DefaultVoice != "af_bella" || config.Voices["en-US"] != "af_bella" || config.Voices["pt-BR"] != "pm_santa" {
+		t.Fatalf("wizard saved config = %#v", config)
+	}
+	if speechStarts != 2 || installs != 1 || translatorStarts != 1 {
+		t.Fatalf("speech starts=%d model installs=%d translator checks=%d", speechStarts, installs, translatorStarts)
+	}
+	for _, expected := range []string{"Which languages do you listen in?", "Install local English-to-Brazilian Portuguese translation?", "Choose a default voice for American English", "Choose a default voice for Brazilian Portuguese"} {
+		if !strings.Contains(stdout.String(), expected) {
+			t.Errorf("wizard output missing %q: %q", expected, stdout.String())
+		}
 	}
 }
 

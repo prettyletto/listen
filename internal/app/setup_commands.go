@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -39,37 +38,34 @@ func setupCommand(ctx context.Context, args []string, stdin io.Reader, stdout, s
 	if err != nil {
 		return apperr.New("config_unavailable", "Could not read listen preferences.", "Run listen config to inspect or repair the local configuration.", err)
 	}
-	if translationPair != "" {
-		_, target, _ := strings.Cut(translationPair, ":")
-		voiceID := config.Voices[target]
-		if voiceID == "" {
-			if voice, ok := kokoro.DefaultVoice(target); ok {
-				voiceID = voice.ID
-			} else {
-				return apperr.New("invalid_arguments", "No local speech voice is available for this translation target.", "Choose a translated language with a bundled local voice.", nil)
-			}
-		}
-		if err := settings.SetLocaleVoice(&config, target, voiceID); err != nil {
-			return apperr.New("invalid_voice", "The translated language voice is unavailable.", "Run listen voices to see available local voices.", err)
-		}
-	}
-	if !config.SetupComplete {
-		voice, err := chooseSetupVoice(ctx, stdin, stdout, config.Speech.DefaultVoice)
+	if deps.interactiveInput(stdin) {
+		config, translationPair, err = runSetupWizard(ctx, stdin, stdout, config, translationPair)
 		if err != nil {
 			if ctx.Err() != nil {
 				return interrupted(ctx.Err())
 			}
-			return apperr.New("invalid_voice", err.Error(), "Run listen voices to see available local voices.", err)
+			return apperr.New("invalid_setup_choice", "Could not use those setup choices.", err.Error(), err)
 		}
-		if err := settings.SetDefaultVoice(&config, voice.ID); err != nil {
-			return apperr.New("invalid_voice", "The selected local voice is unavailable.", "Run listen voices to choose a supported voice.", err)
+	} else {
+		if translationPair != "" {
+			if err := ensureTranslationVoice(&config, translationPair); err != nil {
+				return apperr.New("invalid_voice", "The translated language voice is unavailable.", "Run listen voices to see available local voices.", err)
+			}
+		}
+		if _, ok := kokoro.FindVoice(config.Speech.DefaultVoice); !ok {
+			return apperr.New("invalid_voice", "The configured local voice is unavailable.", "Run listen config set voice af_heart to choose a supported voice.", nil)
+		}
+		if len(config.Voices) == 0 {
+			if err := settings.SetDefaultVoice(&config, config.Speech.DefaultVoice); err != nil {
+				return apperr.New("invalid_voice", "The configured local voice is unavailable.", "Run listen voices to choose a supported voice.", err)
+			}
 		}
 	}
 	voice, ok := kokoro.FindVoice(config.Speech.DefaultVoice)
 	if !ok {
 		return apperr.New("invalid_voice", "The configured local voice is unavailable.", "Run listen config set voice af_heart to choose a supported voice.", nil)
 	}
-	message := fmt.Sprintf("Preparing local speech for %s (%s). This can take several minutes the first time.\n", voice.LocaleName, voice.ID)
+	message := fmt.Sprintf("Preparing local speech with %s (%s). This can take several minutes the first time.\n", voice.LocaleName, voice.ID)
 	if translationPair != "" {
 		message = fmt.Sprintf("Preparing local speech for %s (%s) and local translation for %s. This can take several minutes the first time.\n", voice.LocaleName, voice.ID, strings.ReplaceAll(translationPair, ":", " to "))
 	}
@@ -180,55 +176,6 @@ func parseSetupTranslation(args []string) (string, error) {
 		pair = canonical
 	}
 	return pair, nil
-}
-
-func chooseSetupVoice(ctx context.Context, stdin io.Reader, stdout io.Writer, currentVoice string) (kokoro.Voice, error) {
-	voice, ok := kokoro.FindVoice(currentVoice)
-	if !ok {
-		voice, _ = kokoro.FindVoice("af_heart")
-	}
-	if stdin == nil {
-		return voice, nil
-	}
-	locales := kokoro.Locales()
-	localeCodes := make([]string, 0, len(locales))
-	for _, locale := range locales {
-		localeCodes = append(localeCodes, locale.Locale)
-	}
-	if _, err := fmt.Fprintf(stdout, "Choose a listening language (%s) [%s]: ", strings.Join(localeCodes, ", "), voice.Locale); err != nil {
-		return kokoro.Voice{}, err
-	}
-	type inputResult struct {
-		line string
-		err  error
-	}
-	input := make(chan inputResult, 1)
-	go func() {
-		line, err := bufio.NewReader(stdin).ReadString('\n')
-		input <- inputResult{line: line, err: err}
-	}()
-	var line string
-	var readErr error
-	select {
-	case <-ctx.Done():
-		return kokoro.Voice{}, ctx.Err()
-	case result := <-input:
-		line, readErr = result.line, result.err
-	}
-	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return kokoro.Voice{}, readErr
-	}
-	choice := strings.TrimSpace(line)
-	if choice == "" {
-		return voice, nil
-	}
-	if selected, ok := kokoro.FindVoice(choice); ok {
-		return selected, nil
-	}
-	if selected, ok := kokoro.DefaultVoice(choice); ok {
-		return selected, nil
-	}
-	return kokoro.Voice{}, fmt.Errorf("%q is not a supported language or voice", choice)
 }
 
 func voicesCommand(ctx context.Context, args []string, stdout io.Writer) error {

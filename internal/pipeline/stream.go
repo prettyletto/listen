@@ -91,6 +91,12 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 
 	workCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	streamSucceeded := false
+	defer func() {
+		if !streamSucceeded && player != nil {
+			_ = player.Close()
+		}
+	}()
 	jobs := make(chan segment.Segment, options.QueueCapacity)
 	completed := make(chan synthesis, options.QueueCapacity)
 	producerDone := make(chan struct{})
@@ -207,7 +213,7 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 				buffered = append(buffered, result)
 				bufferedDuration += result.Duration
 				if bufferedDuration >= options.StartupBuffer {
-					if err := startAndAppend(workCtx, player, buffered, &report, options.OnPlaybackStart, resumeOffset); err != nil {
+					if err := startAndAppend(ctx, workCtx, player, buffered, &report, options.OnPlaybackStart, resumeOffset); err != nil {
 						firstErr = err
 						cancel()
 						break
@@ -238,7 +244,7 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 		return report, fmt.Errorf("audio generation ended before sequence %d was committed", reorder.Next())
 	}
 	if player != nil && !started {
-		if err := startAndAppend(ctx, player, buffered, &report, options.OnPlaybackStart, resumeOffset); err != nil {
+		if err := startAndAppend(ctx, ctx, player, buffered, &report, options.OnPlaybackStart, resumeOffset); err != nil {
 			return report, err
 		}
 		playbackStartedAt = time.Now()
@@ -253,6 +259,7 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 	}
 	report.TranslationGenerated = translationStats.generated
 	report.TranslationReused = translationStats.reused
+	streamSucceeded = true
 	return report, nil
 }
 
@@ -330,11 +337,11 @@ func synthesize(ctx context.Context, item segment.Segment, synthesizer speech.Sy
 	return synthesis{result: result}
 }
 
-func startAndAppend(ctx context.Context, player playback.Player, items []speech.Result, report *StreamReport, onPlaybackStart func(), resumeOffset time.Duration) error {
+func startAndAppend(startCtx, appendCtx context.Context, player playback.Player, items []speech.Result, report *StreamReport, onPlaybackStart func(), resumeOffset time.Duration) error {
 	if len(items) == 0 {
 		return errors.New("no ordered audio was ready for playback")
 	}
-	if err := player.Start(ctx); err != nil {
+	if err := player.Start(startCtx); err != nil {
 		return fmt.Errorf("start playback: %w", err)
 	}
 	if onPlaybackStart != nil {
@@ -345,12 +352,12 @@ func startAndAppend(ctx context.Context, player playback.Player, items []speech.
 		var err error
 		if report.Appended == 0 && resumeOffset > 0 {
 			if appender, ok := player.(playback.OffsetAppender); ok {
-				err = appender.AppendAt(ctx, item, resumeOffset)
+				err = appender.AppendAt(appendCtx, item, resumeOffset)
 			} else {
-				err = player.Append(ctx, item)
+				err = player.Append(appendCtx, item)
 			}
 		} else {
-			err = player.Append(ctx, item)
+			err = player.Append(appendCtx, item)
 		}
 		if err != nil {
 			return fmt.Errorf("append audio to player: %w", err)
@@ -365,7 +372,7 @@ func startAndAppend(ctx context.Context, player playback.Player, items []speech.
 		if !ok {
 			return errors.New("player cannot resume within an audio segment")
 		}
-		if err := seeker.Seek(ctx, resumeOffset); err != nil {
+		if err := seeker.Seek(appendCtx, resumeOffset); err != nil {
 			return fmt.Errorf("resume playback position: %w", err)
 		}
 	}

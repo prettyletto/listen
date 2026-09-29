@@ -15,6 +15,13 @@ listen docs/
 listen book.epub --export
 ```
 
+In an interactive Linux terminal, a book with chapters opens a start picker:
+read the full book from the beginning, resume an unfinished session, or start
+at a chapter and continue through the rest. While audio plays, use **Space**
+to pause/resume, **Left/Right** or **p/n** to move between chapters, and **q**
+or **Ctrl-C** to stop and save your place. Piped and other non-interactive runs
+do not open the picker.
+
 `listen docs/` reads supported documentation files into one ordered session.
 Directory inputs honor applicable `.gitignore` rules and keep each block's
 source path in the shared document model.
@@ -34,13 +41,15 @@ readable text layer report that OCR is unavailable; `listen` does not run OCR.
 PDFs are limited to 256 MiB, 5,000 pages, bounded extractor output, and two
 minutes per external PDF tool.
 
-On Linux x86_64, install `uv`, mpv, and FFmpeg, then run `listen setup` once.
-Setup creates a private Python 3.13 environment, installs the hash-locked
-Kokoro and CPU translation-worker dependencies, downloads selected speech
-assets locally, and checks synthesis. Run `listen setup --translate en:pt-BR`
-to install the local English-to-Brazilian-Portuguese model and check its
-runtime. Translation setup downloads only model files; source text stays on
-this device.
+On Linux x86_64, install `uv`, mpv, and FFmpeg, then run `listen setup`.
+In a terminal, the setup wizard lets you select listening languages and a
+default voice for each. It offers optional local English-to-Brazilian
+Portuguese translation; `listen setup --translate en:pt-BR` selects it
+directly. Setup installs the private Python 3.13 environment, checks local
+synthesis and any selected translator, and saves choices after those checks
+pass. `listen config` displays saved preferences, and `listen config set ...`
+changes them. Translation setup downloads only model files; source text stays
+on this device.
 Use `listen doctor` to inspect setup and playback readiness, `listen voices` to
 view voice choices, and `listen config` to manage preferences.
 

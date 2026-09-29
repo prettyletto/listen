@@ -1,27 +1,16 @@
-# Foundation status
+# Current implementation status
 
-This ZIP intentionally contains a **compiling skeleton plus normative design**, not a fake half-implementation.
+This file's original scaffold snapshot is obsolete. The planned vertical slices
+0–12 are implemented and their completion and review evidence is recorded in
+[`docs/IMPLEMENTATION_PROGRESS.md`](docs/IMPLEMENTATION_PROGRESS.md).
 
-Already decided:
+The current product includes local speech playback and export, resume and
+caching, EPUB/Markdown/TXT/HTML/PDF/directory parsing, local English-to-
+Brazilian-Portuguese translation, explicit OpenAI fallback policy, and
+opt-in Go AST narration.
 
-- Go product core, Python Kokoro worker.
-- canonical document IR.
-- EPUB spine/nav/NCX semantics and heading enrichment.
-- semantic segments and stable ordering.
-- same pipeline for streaming/export.
-- local realtime viability planner.
-- explicit cloud consent.
-- vertical implementation order and acceptance gates.
-- synthetic EPUB/Markdown/TXT parser fixtures.
-
-Still implementation work by design:
-
-- concrete CLI parser/UI;
-- XDG/cache/session implementation;
-- Kokoro worker wiring from prototype;
-- mpv IPC;
-- source parsers;
-- translation backends;
-- setup/packaging.
-
-Start with `docs/LUNA_START_PROMPT.md`.
+Known scope limits include Linux x86_64 for managed runtime setup, best-effort
+PDF structure without OCR, one local translation pair, and no currently
+available `listen inspect` command or `--model`, `--from`, `--include-code`, or
+`--verbose` one-shot flags. See [`docs/CLI_SPEC.md`](docs/CLI_SPEC.md) for the
+implemented and planned CLI surfaces.

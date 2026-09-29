@@ -27,7 +27,6 @@ listen voices
 listen models
 listen config
 listen doctor
-listen inspect <source>
 listen --help
 ```
 
@@ -40,17 +39,17 @@ listen --help
 
 ```text
 --voice <id>
---model <id>
 --speed <speech-rate>
 --playback-speed <rate>
 --no-play
---from <chapter-or-section>
---include-code
 --code
---verbose
 ```
 
 Do not require these for normal use.
+
+The following controls remain planned and are not accepted by the current
+command parser: `listen inspect <source>`, `--model <id>`, `--from
+<chapter-or-section>`, `--include-code`, and `--verbose`.
 
 --code opts into Go AST narration for .go files. It speaks package and import
 overviews, type and function signatures, doc comments, and concise summaries
@@ -59,6 +58,14 @@ normal reader behavior.
 
 `--no-play` generates and caches audio without opening mpv; it is useful for
 automation and validating local speech setup.
+
+In an interactive Linux terminal, `listen <book>` opens a start picker when
+the source has multiple playable chapters or major sections. Choose the full
+book from the beginning, an unfinished saved position, or a chapter/section.
+Starting at a chapter continues through the rest of the book. During playback,
+Space pauses/resumes, Left/Right or `p`/`n` changes chapter, and `q` or Ctrl-C
+stops and saves the position. Non-interactive runs do not prompt and keep the
+normal resume behavior.
 
 `--export [directory]` builds a reusable audiobook bundle without opening
 mpv. With no directory, `listen book.epub --export` writes `book-audio/` next
@@ -91,9 +98,10 @@ ordered pipeline and caches without a playback deadline.
 - Missing mpv is an actionable setup/doctor error for playback, not a lost generation.
 - `--export` may run without mpv.
 
-## `listen inspect`
+## Planned: `listen inspect`
 
-This is the parser/model transparency tool. It may show:
+This parser/model transparency command is not available yet. When implemented,
+it may show:
 
 ```text
 Title: Example Book
@@ -117,18 +125,22 @@ It should also support `--json` eventually so parser regression fixtures can be 
 
 ## Model/voice listing
 
-`listen models` separates:
+`listen models` currently discovers OpenAI translation model IDs only; it does
+not list local translator backends or runner adapters, and it sends no source
+text. `listen voices` lists the supported Kokoro voices by locale and marks the
+default and configured voices. Voice files are downloaded locally when setup
+checks the selected language.
 
-- automatic planner;
-- installed local translators;
-- available local translators;
-- configured cloud providers;
-- runner adapters.
+Listing local translator and planner capabilities remains future work.
 
-`listen voices` groups installed/available voices by locale and marks the default. It should not dump every low-level Kokoro artifact by default.
-
-The first `listen setup` asks for a listening language, installs the private
-Linux x86_64 speech runtime, and confirms it by generating a short local sample.
-Run `listen doctor` to inspect runtime, player, export, config, and model-cache
-readiness. The available voice list is curated; model files are fetched by
-Kokoro into the local cache when setup checks a configured language.
+Each interactive `listen setup` invocation opens a guided preferences flow.
+Choose one or more listening languages, a default voice for each language,
+and whether to install the optional local English-to-Brazilian-Portuguese
+translator. `listen setup --translate en:pt-BR` selects that translator without
+the optional prompt. Choices are saved only after runtime and requested
+language health checks pass. Non-interactive setup uses saved or default
+choices without prompting. Run `listen config` to view preferences or
+`listen config set ...` to change one directly. `listen doctor` inspects
+runtime, player, export, config, and model-cache readiness. The available
+voice list is curated; Kokoro fetches needed model files into the local cache
+when setup checks each selected language.

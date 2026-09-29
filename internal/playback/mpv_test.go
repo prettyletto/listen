@@ -81,6 +81,27 @@ func TestMPVPositionMapsPlaylistIndexToSegmentAndOffset(t *testing.T) {
 	}
 }
 
+func TestMPVReadsCurrentSegmentDuration(t *testing.T) {
+	player, requests, closePeer := newIPCPlayer(t, func(command []any) any {
+		if command[0] == "get_property" && command[1] == "duration" {
+			return map[string]any{"error": "success", "data": float64(42.25)}
+		}
+		return map[string]any{"error": "success"}
+	})
+	defer closePeer()
+	duration, err := player.CurrentDuration(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if duration != 42250*time.Millisecond {
+		t.Fatalf("current segment duration = %s, want 42.25s", duration)
+	}
+	want := []any{[]any{"get_property", "duration"}}
+	if got := requests(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("mpv duration command = %#v, want %#v", got, want)
+	}
+}
+
 func TestMPVSeekSetsCurrentItemOffset(t *testing.T) {
 	player, requests, closePeer := newIPCPlayer(t, func(command []any) any {
 		return map[string]any{"error": "success"}
@@ -95,6 +116,26 @@ func TestMPVSeekSetsCurrentItemOffset(t *testing.T) {
 	}
 	if err := player.Seek(context.Background(), -time.Second); err == nil {
 		t.Fatal("accepted a negative seek offset")
+	}
+}
+
+func TestMPVPauseControlSetsPlaybackState(t *testing.T) {
+	player, requests, closePeer := newIPCPlayer(t, func(command []any) any {
+		return map[string]any{"error": "success"}
+	})
+	defer closePeer()
+	if err := player.SetPaused(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := player.SetPaused(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	want := []any{[]any{"set_property", "pause", true}, []any{"set_property", "pause", false}}
+	if got := requests(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("mpv pause commands = %#v, want %#v", got, want)
+	}
+	if err := player.SetPaused(nil, true); err == nil {
+		t.Fatal("accepted a nil pause context")
 	}
 }
 

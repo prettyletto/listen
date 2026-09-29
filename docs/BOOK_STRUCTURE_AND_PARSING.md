@@ -243,7 +243,9 @@ Repair in descending authority:
 - no headings -> spine boundaries;
 - only then title heuristics.
 
-Every repair produces a machine-readable warning visible in `listen inspect`/verbose diagnostics, not noisy default playback.
+Every repair produces a machine-readable warning in the document IR, not noisy
+default playback. A future `listen inspect` or verbose mode can expose those
+warnings to the user.
 
 ---
 

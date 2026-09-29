@@ -30,3 +30,12 @@ type Seeker interface {
 type OffsetAppender interface {
 	AppendAt(context.Context, Item, time.Duration) error
 }
+
+// Pausable controls playback without exposing the provider's command protocol.
+type Pausable interface {
+	SetPaused(context.Context, bool) error
+}
+
+type DurationReader interface {
+	CurrentDuration(context.Context) (time.Duration, error)
+}

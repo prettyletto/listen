@@ -24,23 +24,23 @@ func TestProvisionUsesPrivateManagedPythonAndLockedWorkerPackages(t *testing.T) 
 	if err := manager.Provision(context.Background(), userPaths); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(RuntimeRoot(userPaths)); err != nil {
-		t.Fatal(err)
-	}
 	if err := manager.Provision(context.Background(), userPaths); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.calls) != 6 {
-		t.Fatalf("setup command calls = %d, want 6 across two idempotent runs", len(runner.calls))
+	if len(runner.calls) != 5 {
+		t.Fatalf("setup command calls = %d, want 5 across first setup and repeat setup", len(runner.calls))
 	}
 	if !reflect.DeepEqual(runner.calls[0].args[:3], []string{"python", "install", PythonVersion}) || runner.calls[1].args[0] != "venv" || !reflect.DeepEqual(runner.calls[2].args[:2], []string{"pip", "sync"}) {
 		t.Fatalf("runtime setup command order = %#v", runner.calls)
+	}
+	if runner.calls[3].args[0] != "python" || !reflect.DeepEqual(runner.calls[4].args[:2], []string{"pip", "sync"}) {
+		t.Fatalf("repeat setup recreated the existing virtual environment: %#v", runner.calls[3:])
 	}
 	if !contains(runner.calls[1].args, "--managed-python") || !contains(runner.calls[2].args, "https://download.pytorch.org/whl/cpu") || !contains(runner.calls[2].args, "--require-hashes") || !contains(runner.calls[2].args, "--strict") {
 		t.Fatalf("uv environment setup did not select managed Python and hash-verified CPU dependencies: %#v", runner.calls)
 	}
 	for _, call := range runner.calls {
-		if !contains(call.env, "UV_PYTHON_PREFERENCE=only-managed") || !contains(call.env, "UV_PYTHON_INSTALL_DIR="+filepath.Join(RuntimeRoot(userPaths), "python")) {
+		if contains(call.env, "UV_PYTHON_PREFERENCE=only-managed") || !contains(call.env, "UV_PYTHON_INSTALL_DIR="+filepath.Join(RuntimeRoot(userPaths), "python")) {
 			t.Fatalf("uv environment not scoped to listen runtime: %#v", call.env)
 		}
 	}
@@ -50,6 +50,21 @@ func TestProvisionUsesPrivateManagedPythonAndLockedWorkerPackages(t *testing.T) 
 	}
 	if !strings.Contains(string(requirements), "kokoro=="+KokoroVersion) || !strings.Contains(string(requirements), "en_core_web_sm-3.8.0") || !strings.Contains(string(requirements), "torch==2.14.0+cpu") {
 		t.Fatalf("runtime lock is missing pinned Kokoro, G2P, or CPU PyTorch packages")
+	}
+}
+
+func TestProvisionClearsAnIncompleteExistingVirtualEnvironment(t *testing.T) {
+	userPaths := paths.Paths{DataDir: filepath.Join(t.TempDir(), "data"), CacheDir: filepath.Join(t.TempDir(), "cache")}
+	venvPath := filepath.Join(RuntimeRoot(userPaths), "venv")
+	if err := os.MkdirAll(venvPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runner := &recordingRunner{}
+	if err := (Manager{Runner: runner}).Provision(context.Background(), userPaths); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.calls) < 2 || runner.calls[1].args[0] != "venv" || !contains(runner.calls[1].args, "--clear") {
+		t.Fatalf("incomplete virtual environment was not cleared for repair: %#v", runner.calls)
 	}
 }
 
@@ -160,6 +175,15 @@ func (runner *recordingRunner) Run(_ context.Context, program string, args, env 
 		args:    append([]string(nil), args...),
 		env:     append([]string(nil), env...),
 	})
+	if len(args) > 0 && args[0] == "venv" {
+		python := filepath.Join(args[len(args)-1], "bin", "python")
+		if err := os.MkdirAll(filepath.Dir(python), 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(python, []byte("managed python"), 0o700); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

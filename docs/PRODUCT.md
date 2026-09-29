@@ -38,7 +38,9 @@ The user should learn at most these ideas:
 - `--translate <language>` — hear it in another language.
 - `--export` — produce files instead of starting playback.
 
-Everything else is discoverable via `listen --help`, `listen voices`, `listen models`, `listen config`, `listen doctor`, and `listen inspect`.
+Current discovery commands are `listen --help`, `listen voices`, `listen
+models`, `listen config`, and `listen doctor`. Parser inspection is planned but
+is not available in the current CLI.
 
 ## Success metrics
 

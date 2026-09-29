@@ -1,7 +1,7 @@
 # Implementation progress
 
 This records the user-visible scenario and verified exit criteria for each
-vertical slice while the foundation is being implemented.
+vertical slice.
 
 Every completed slice receives an independent, read-only reviewer subagent
 checkpoint before work moves to the next slice. The reviewer checks the
@@ -9,6 +9,16 @@ implementation, tests/fixtures, docs, architecture constraints, and relevant
 failure/privacy cases. Findings are resolved and re-reviewed before advancing.
 After approval and required quality gates, commit that slice before beginning
 the next one.
+
+## Interactive chapter player
+
+Interactive Linux playback offers a start picker for the full document, an
+unfinished saved position, or a playable chapter/major section. The player
+screen shows the current location and readiness and handles pause/resume,
+previous/next chapter, and stop. Chapter changes cancel the active stream and
+restart from that boundary through the same ordered, cached pipeline.
+Automated checks cover chapter grouping, keyboard/model behavior,
+chapter-boundary restart, mpv controls, and player process lifetime.
 
 ## Slice 0 — repository spine and invariants
 
@@ -25,7 +35,7 @@ available to pipeline tests.
 **Reviewer:** Passed. The independent Slice 0 reviewer reported no findings in
 the reviewed foundation files.
 
-## Next: Slice 1 — `listen file.txt` streams via existing Kokoro
+## Slice 1 — `listen file.txt` streams via existing Kokoro
 
 **Scenario:** `listen notes.txt` begins ordered playback after a small buffer,
 while synthesis continues ahead of the listener.
@@ -35,9 +45,9 @@ rerunning reuses completed WAV segments; delayed fake TTS still commits audio in
 source order; cancellation shuts down child processes and preserves completed
 cache entries.
 
-**Status:** Implementation and automated checks are complete; the independent
-Slice 1 reviewer checkpoint is in progress. Work on Slice 2 waits for review
-approval and resolution of any findings.
+**Status:** Complete after independent reviewer approval. Ordered playback,
+speech caching, resume, cancellation, and the Kokoro worker are wired through
+the user-facing command.
 
 **Verified:** `gofmt`, `go test ./...`, `go vet ./...`, race tests for the
 pipeline/speech/worker/playback packages, Python worker syntax parsing, and CLI
@@ -45,16 +55,17 @@ help output. Fake TTS verifies playback starts before the final segment and
 that deliberately out-of-order completion still plays in source order. Speech
 cache tests cover completed WAV reuse and malformed/truncated audio rejection.
 
-**Environment note:** The real Kokoro path cannot be exercised in this
-environment yet: Python 3.14 is installed and Kokoro is absent. Running a text
-source reports `Run listen setup`; Slice 5 will provide the managed runtime.
+**Runtime verification:** The initial Slice 1 checkpoint used fake synthesis
+because the host Python was 3.14 and Kokoro was absent. After Slice 5 added the
+managed runtime, an isolated setup and a one-segment `--no-play` run passed on
+2026-09-29 with CPython 3.13.15 and Kokoro 0.9.4.
 
 **Reviewer:** Approved after follow-up. The reviewer found that idle mpv would
 keep the command alive after the queue ended. `MPV.Wait` now detects the idle
 state after all audio is queued, closes mpv on normal completion, and reports
 early process exit. The focused playback tests pass.
 
-## Next: Slice 2 — first-class EPUB structure
+## Slice 2 — first-class EPUB structure
 
 **Scenario:** `listen book.epub` understands parts, chapters, and sections,
 while keeping spine reading order and beginning Chapter 1 quickly.
@@ -147,8 +158,8 @@ reviewer confirmed the fix and reported no remaining P0–P2 findings.
 
 ## Slice 5 — setup, voices, config, doctor
 
-**Scenario:** a Linux user installs local speech once, selects a listening
-language and voice, and can inspect the runtime when something is missing.
+**Scenario:** a Linux user installs local speech, selects listening languages
+and a voice for each, and can inspect the runtime when something is missing.
 
 **Status:** Complete after independent reviewer approval. The full runtime
 dependency set is committed and setup enforces its package hashes.
@@ -157,14 +168,27 @@ dependency set is committed and setup enforces its package hashes.
 environment from a committed 91-package Linux x86_64 CPU lock with SHA-256
 hashes and strict dependency checks. It runs a local synthesis health sample
 and saves preferences only after success. `voices`, `config`, and `doctor` are
-implemented. Fake installer/worker tests cover repeat setup, failure,
-cancellation, voice selection, config override behavior, and missing runtime
-diagnostics. The embedded worker no longer depends on a source checkout. The
+implemented. The interactive setup wizard selects multiple locales, a default
+voice per locale, and optionally the local translator; it runs again for
+interactive setup requests while non-interactive setup uses saved/default
+choices. Fake installer/worker tests cover repeat setup, failure, cancellation,
+voice selection, config override behavior, and missing runtime diagnostics. The
+embedded worker no longer depends on a source checkout. The
 lock passes `uv pip sync --dry-run --require-hashes --strict`. `go test ./...`,
 `go vet ./...`, `go test -race ./...`, Python worker syntax parsing, and CLI
 help pass. Manual `voices`, `config`, and `doctor` commands pass with isolated
-XDG paths. A live model install and real synthesis were not run; setup behavior
-is covered with fake installer and speech-worker implementations.
+XDG paths. An isolated live setup then installed the managed CPython 3.13.15
+runtime and locked Kokoro 0.9.4 dependencies, completed the real synthesis
+health check, and generated one source segment through `listen --no-play` on
+2026-09-29. The setup used temporary XDG directories; no user runtime or cache
+was modified. The first real provision attempt exposed a conflict between
+`UV_PYTHON_PREFERENCE=only-managed` and `uv venv --managed-python`; setup now
+uses the explicit managed-Python flag without the conflicting environment
+setting, with a regression assertion and a successful live rerun. `uv` still
+warns that Kokoro/Misaki package metadata declares Python below 3.13; the
+current locked install, health synthesis, and source smoke test pass, but that
+upstream compatibility declaration should be revisited during dependency
+updates.
 
 **Reviewer:** The initial read-only review found P2: transitive dependency
 versions could vary because repeat setup used `uv pip install` from direct

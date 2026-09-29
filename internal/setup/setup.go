@@ -88,16 +88,19 @@ func (manager Manager) Provision(ctx context.Context, userPaths paths.Paths) err
 	}
 	env := []string{
 		"UV_PYTHON_INSTALL_DIR=" + pythonInstallDir,
-		"UV_PYTHON_PREFERENCE=only-managed",
 		"UV_CACHE_DIR=" + filepath.Join(userPaths.CacheDir, "uv"),
 	}
 	runner := manager.runner()
 	stdout, stderr := manager.streams()
-	commands := [][]string{
-		{"python", "install", PythonVersion, "--install-dir", pythonInstallDir},
-		{"venv", "--managed-python", "--python", PythonVersion, venvPath},
-		{"pip", "sync", "--python", python, "--index", "https://download.pytorch.org/whl/cpu", "--require-hashes", "--strict", requirementsPath},
+	commands := [][]string{{"python", "install", PythonVersion, "--install-dir", pythonInstallDir}}
+	venvArgs, createVenv, err := managedVenvCommand(python, venvPath)
+	if err != nil {
+		return err
 	}
+	if createVenv {
+		commands = append(commands, venvArgs)
+	}
+	commands = append(commands, []string{"pip", "sync", "--python", python, "--index", "https://download.pytorch.org/whl/cpu", "--require-hashes", "--strict", requirementsPath})
 	for _, args := range commands {
 		if err := runner.Run(ctx, program, args, env, stdout, stderr); err != nil {
 			if ctx.Err() != nil {
@@ -107,6 +110,28 @@ func (manager Manager) Provision(ctx context.Context, userPaths paths.Paths) err
 		}
 	}
 	return nil
+}
+
+func managedVenvCommand(python, venvPath string) ([]string, bool, error) {
+	pythonInfo, pythonErr := os.Stat(python)
+	if pythonErr == nil && pythonInfo.Mode().IsRegular() && pythonInfo.Mode().Perm()&0o111 != 0 {
+		return nil, false, nil
+	}
+	if pythonErr != nil && !errors.Is(pythonErr, os.ErrNotExist) {
+		return nil, false, fmt.Errorf("inspect managed Python environment: %w", pythonErr)
+	}
+	args := []string{"venv", "--managed-python", "--python", PythonVersion}
+	if venvInfo, err := os.Stat(venvPath); err == nil {
+		if !venvInfo.IsDir() {
+			return nil, false, fmt.Errorf("managed Python environment path is not a directory: %s", venvPath)
+		}
+		// An incomplete environment has no usable interpreter. Clear it explicitly
+		// so uv repairs it without prompting or leaving setup half-complete.
+		args = append(args, "--clear")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, false, fmt.Errorf("inspect managed Python environment directory: %w", err)
+	}
+	return append(args, venvPath), true, nil
 }
 
 func (manager Manager) Verify(ctx context.Context, userPaths paths.Paths) (string, error) {

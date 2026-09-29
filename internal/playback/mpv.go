@@ -87,7 +87,7 @@ func (p *MPV) Start(ctx context.Context) error {
 		p.socket = socket
 	}
 	args := []string{
-		"--idle=yes", "--force-window=no", "--no-video", "--audio-display=no", "--input-terminal=yes", "--term-osd-bar=yes",
+		"--idle=yes", "--force-window=no", "--no-video", "--audio-display=no", "--input-terminal=no", "--term-osd-bar=yes",
 		"--input-ipc-server=" + socket,
 	}
 	if p.options.PlaybackSpeed > 0 {
@@ -223,6 +223,27 @@ func (p *MPV) Position(ctx context.Context) (uint64, time.Duration, error) {
 	return p.seqs[index], time.Duration(seconds * float64(time.Second)), nil
 }
 
+func (p *MPV) CurrentDuration(ctx context.Context) (time.Duration, error) {
+	if ctx == nil {
+		return 0, errors.New("mpv duration query requires a context")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.started || p.closed {
+		return 0, errors.New("mpv player is not running")
+	}
+	value, err := p.commandLocked(ctx, []any{"get_property", "duration"})
+	if err != nil {
+		return 0, err
+	}
+	seconds, ok := number(value["data"])
+	maxSeconds := float64(int64(^uint64(0)>>1)) / float64(time.Second)
+	if !ok || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 || seconds >= maxSeconds {
+		return 0, errors.New("mpv returned an invalid audio duration")
+	}
+	return time.Duration(seconds * float64(time.Second)), nil
+}
+
 // Seek sets the offset in the currently playing audio item.
 func (p *MPV) Seek(ctx context.Context, offset time.Duration) error {
 	if ctx == nil {
@@ -241,6 +262,20 @@ func (p *MPV) Seek(ctx context.Context, offset time.Duration) error {
 		return fmt.Errorf("seek mpv playback: %w", err)
 	}
 	return nil
+}
+
+// SetPaused toggles mpv's pause property for the interactive Listen player.
+func (p *MPV) SetPaused(ctx context.Context, paused bool) error {
+	if ctx == nil {
+		return errors.New("mpv pause control requires a context")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.started || p.closed {
+		return errors.New("mpv player is not running")
+	}
+	_, err := p.commandLocked(ctx, []any{"set_property", "pause", paused})
+	return err
 }
 
 func (p *MPV) Wait(ctx context.Context) error {

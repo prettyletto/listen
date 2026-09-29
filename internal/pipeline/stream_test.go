@@ -64,6 +64,26 @@ func TestStreamStartsPlaybackBeforeRemainingSegmentsFinish(t *testing.T) {
 	}
 }
 
+func TestStreamLeavesPlayerAliveUntilCallerWaits(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	player := &lifetimePlayer{}
+	plan := segment.Plan{Segments: []segment.Segment{{Seq: 0, ID: "only"}}}
+	if _, err := Stream(ctx, plan, &testkit.FakeSynthesizer{Duration: time.Second}, nil, player, StreamOptions{StartupBuffer: time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	if player.startContext == nil || player.startContext.Err() != nil {
+		t.Fatalf("player lifetime was tied to the finished synthesis context: %v", player.startContext)
+	}
+	if player.closeCalls != 0 {
+		t.Fatalf("successful stream closed its player %d time(s) before the caller could wait", player.closeCalls)
+	}
+	cancel()
+	if !errors.Is(player.startContext.Err(), context.Canceled) {
+		t.Fatalf("player lifetime did not follow the caller context: %v", player.startContext.Err())
+	}
+}
+
 func TestStreamReusesCompletedSpeechCache(t *testing.T) {
 	synth := &testkit.FakeSynthesizer{Duration: time.Second}
 	cache := &memorySpeechCache{results: make(map[string]speech.Result)}
@@ -192,6 +212,26 @@ type recordingPlayer struct {
 	items     []playback.Item
 	mu        sync.Mutex
 	startedCh chan struct{}
+}
+
+type lifetimePlayer struct {
+	startContext context.Context
+	closeCalls   int
+}
+
+func (p *lifetimePlayer) Start(ctx context.Context) error {
+	p.startContext = ctx
+	return nil
+}
+
+func (*lifetimePlayer) Append(context.Context, playback.Item) error { return nil }
+func (*lifetimePlayer) Position(context.Context) (uint64, time.Duration, error) {
+	return 0, 0, nil
+}
+func (*lifetimePlayer) Wait(context.Context) error { return nil }
+func (p *lifetimePlayer) Close() error {
+	p.closeCalls++
+	return nil
 }
 
 // advancingPositionPlayer reports a controlled playback advance on each

@@ -18,7 +18,7 @@ import (
 	audiobook "github.com/prettyletto/listen/internal/export"
 	"github.com/prettyletto/listen/internal/paths"
 	"github.com/prettyletto/listen/internal/pipeline"
-	"github.com/prettyletto/listen/internal/playback"
+	"github.com/prettyletto/listen/internal/playerui"
 	"github.com/prettyletto/listen/internal/segment"
 	"github.com/prettyletto/listen/internal/session"
 	"github.com/prettyletto/listen/internal/settings"
@@ -525,6 +525,8 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 	streamPlan := plan
 	var resumeOffset time.Duration
 	var sessionStore *session.Store
+	chapters := chaptersForPlan(plan, doc.Metadata.Title, input.Name)
+	var resumePoint *playerui.StartPoint
 	if !options.noPlay && !options.exportAudio && options.source != "-" {
 		sessionStore, err = session.NewStore(userPaths.CacheDir, input.Path)
 		if err != nil {
@@ -538,32 +540,68 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 			if translationMatches {
 				point, ok := session.Resolve(plan, state)
 				if ok {
-					streamPlan.Segments = append([]segment.Segment(nil), plan.Segments[point.Index:]...)
-					resumeOffset = point.Offset
-					_ = terminal.Info("Resuming from your saved position.")
+					chapterIndex := chapterIndexAt(chapters, point.Index)
+					chapterName := "the current position"
+					if chapterIndex >= 0 && chapterIndex < len(chapters) {
+						chapterName = chapters[chapterIndex].Title
+					}
+					resumePoint = &playerui.StartPoint{
+						Label: "Resume at " + chapterName, StartIndex: point.Index,
+						StartSeq: plan.Segments[point.Index].Seq, Offset: point.Offset,
+						ChapterIndex: chapterIndex, Resume: true,
+					}
 				}
 			} else {
 				_ = terminal.Info("Starting from the beginning because the translation settings changed.")
 			}
 		}
 	}
+	startPoint := playerui.StartPoint{Label: "Start from the beginning", StartIndex: 0, StartSeq: plan.Segments[0].Seq}
+	if resumePoint != nil {
+		startPoint = *resumePoint
+	}
+	if playbackMode && deps.interactivePlayback(stdin, stderr) && (len(chapters) > 1 || resumePoint != nil) {
+		chosen, err := deps.chooseStart(ctx, stdin, stderr, playerui.NewPicker(docTitle(doc.Metadata.Title, input.Name), chapters, resumePoint))
+		if errors.Is(err, playerui.ErrCancelled) {
+			return nil
+		}
+		if err != nil {
+			if ctx.Err() != nil {
+				return interrupted(ctx.Err())
+			}
+			return apperr.New("player_unavailable", "Could not open the chapter selector.", "Run listen from a Linux terminal, or start from the beginning in a non-interactive shell.", err)
+		}
+		startPoint = chosen
+	} else if resumePoint != nil {
+		_ = terminal.Info("Resuming from your saved position.")
+	}
+	if startPoint.StartIndex < 0 || startPoint.StartIndex >= len(plan.Segments) {
+		return apperr.New("session_unavailable", "The selected starting point is no longer available.", "Run listen again to choose a valid chapter.", nil)
+	}
+	streamPlan.Segments = append([]segment.Segment(nil), plan.Segments[startPoint.StartIndex:]...)
+	resumeOffset = startPoint.Offset
 	translationResolvedFromCache := false
 	cachedTranslationCount := 0
 	if translationCache != nil {
-		translatedPlan, complete, err := translationCache.ResolveCachedPlan(ctx, streamPlan, translationBackend, translationContext)
+		translatedPlan, complete, err := translationCache.ResolveCachedPlan(ctx, plan, translationBackend, translationContext)
 		if err != nil {
 			return apperr.New("storage_unavailable", "Could not read cached translations.", "Check that your cache directory is available.", err)
 		}
 		if complete {
-			streamPlan = translatedPlan
+			plan = translatedPlan
+			streamPlan = segment.Plan{DocumentID: plan.DocumentID, Segments: append([]segment.Segment(nil), plan.Segments[startPoint.StartIndex:]...)}
 			streamTranslator = nil
 			translationResolvedFromCache = true
-			cachedTranslationCount = len(translatedPlan.Segments)
+			cachedTranslationCount = len(streamPlan.Segments)
 		}
 	}
 	allCached := false
 	if translationCache == nil || translationResolvedFromCache {
-		allCached, err = allAudioCached(ctx, audioCache, streamPlan, options.voice, options.speed)
+		cacheCheckPlan := streamPlan
+		if playbackMode && deps.interactivePlayback(stdin, stderr) && len(chapters) > 1 {
+			cacheCheckPlan = plan
+		}
+		allCached, err = allAudioCached(ctx, audioCache, cacheCheckPlan, options.voice, options.speed)
 	}
 	if err != nil {
 		return apperr.New("storage_unavailable", "Could not read cached audio.", "Check that your cache directory is available.", err)
@@ -584,32 +622,11 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 		defer synthesizer.Close()
 	}
 
-	var player playback.Player
-	if !options.noPlay && !options.exportAudio {
-		player = deps.newPlayer(playback.MPVOptions{PlaybackSpeed: options.playbackSpeed, Stdin: stdin, Stderr: stderr})
-		defer player.Close()
-	}
-	var playbackMonitor *session.Monitor
-	if player != nil && sessionStore != nil {
-		baseState := session.State{
-			DocumentID: plan.DocumentID, PlaybackSpeed: options.playbackSpeed, Voice: options.voice,
-			TargetLanguage: options.targetLanguage, TranslationBackend: translationBackend,
-		}
-		if len(streamPlan.Segments) > 0 {
-			if initial, ok := session.RecordPosition(baseState, plan, streamPlan.Segments[0].Seq, resumeOffset); ok {
-				if err := sessionStore.Save(ctx, initial); err != nil {
-					return apperr.New("session_save_failed", "Could not save the playback position.", "Check that your cache directory is writable.", err)
-				}
-				baseState = initial
-			}
-		}
-		playbackMonitor = session.StartMonitor(ctx, player, sessionStore, baseState, plan, deps.sessionPollInterval)
-		defer func() { _ = playbackMonitor.Stop() }()
-	}
 	progressStride := len(streamPlan.Segments) / 10
 	if progressStride < 1 {
 		progressStride = 1
 	}
+	var playbackUI playerScreen
 	streamOptions := pipeline.StreamOptions{
 		Workers: 1, QueueCapacity: 2, StartupBuffer: deps.startupBuffer,
 		Voice: options.voice, Speed: options.speed, ResumeOffset: resumeOffset,
@@ -621,7 +638,13 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 				_ = terminal.Info(fmt.Sprintf("Audio ready: %d/%d segments", completed, total))
 			}
 		},
-		OnPlaybackStart: func() { _ = terminal.Info("Playback started.") },
+		OnPlaybackStart: func() {
+			if playbackUI != nil {
+				playbackUI.SetPlaybackStarted()
+			} else {
+				_ = terminal.Info("Playback started.")
+			}
+		},
 		OnTranslationMeasured: func(wall time.Duration, translated []segment.Segment) {
 			measured := make([]viability.MeasuredText, 0, len(translated))
 			for _, item := range translated {
@@ -638,7 +661,13 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 					SupportsPair: true, RealtimeRatio: ratio,
 				}}, false)
 				if selectErr == nil && selection.Warning != "" {
-					translationWarningOnce.Do(func() { _ = terminal.Warning(selection.Warning) })
+					translationWarningOnce.Do(func() {
+						if playbackUI != nil {
+							playbackUI.SetStatus("Warning: " + selection.Warning)
+						} else {
+							_ = terminal.Warning(selection.Warning)
+						}
+					})
 				}
 			}
 		},
@@ -658,17 +687,40 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 			snapshot := planner.Snapshot()
 			if playbackMode && snapshot.PredictedUnderrun > 0 && snapshot.PredictedUnderrun <= 45*time.Second {
 				bufferWarningOnce.Do(func() {
-					_ = terminal.Warning(fmt.Sprintf("Ready audio may run out in about %s; playback can pause while local processing catches up.", snapshot.PredictedUnderrun.Round(time.Second)))
+					warning := fmt.Sprintf("Ready audio may run out in about %s; playback can pause while local processing catches up.", snapshot.PredictedUnderrun.Round(time.Second))
+					if playbackUI != nil {
+						playbackUI.SetStatus("Warning: " + warning)
+					} else {
+						_ = terminal.Warning(warning)
+					}
 				})
 			}
 		},
 	}
-	report, err := pipeline.Stream(ctx, streamPlan, synthesizer, audioCache, player, streamOptions)
-	if err != nil {
-		if ctx.Err() != nil {
-			return interrupted(ctx.Err())
+	var report pipeline.StreamReport
+	if playbackMode {
+		baseState := session.State{
+			DocumentID: plan.DocumentID, PlaybackSpeed: options.playbackSpeed, Voice: options.voice,
+			TargetLanguage: options.targetLanguage, TranslationBackend: translationBackend,
 		}
-		return apperr.New("playback_failed", "Translation, audio generation, or playback stopped before the source finished.", "Completed work is safe; run listen again to resume.", err)
+		var stopped bool
+		report, stopped, err = runPlayback(ctx, stdin, stderr, deps, options, docTitle(doc.Metadata.Title, input.Name), plan,
+			startPoint, chapters, synthesizer, audioCache, streamOptions, sessionStore, baseState, &playbackUI)
+		if err != nil {
+			return playerError(err)
+		}
+		if stopped {
+			_ = terminal.Info("Playback stopped. Your current position is saved.")
+			return nil
+		}
+	} else {
+		report, err = pipeline.Stream(ctx, streamPlan, synthesizer, audioCache, nil, streamOptions)
+		if err != nil {
+			if ctx.Err() != nil {
+				return interrupted(ctx.Err())
+			}
+			return apperr.New("playback_failed", "Translation or audio generation stopped before the source finished.", "Completed work is safe; run listen again to resume.", err)
+		}
 	}
 	if startupTranslationGenerated > 0 {
 		report.TranslationGenerated += startupTranslationGenerated
@@ -710,18 +762,7 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 		_ = terminal.Success("Audiobook is ready at " + result.Directory)
 		return nil
 	}
-	if player != nil {
-		if err := player.Wait(ctx); err != nil {
-			if ctx.Err() != nil {
-				return interrupted(ctx.Err())
-			}
-			return apperr.New("playback_failed", "Playback ended unexpectedly.", "Run listen again to resume from cached audio.", err)
-		}
-		if playbackMonitor != nil {
-			if err := playbackMonitor.Stop(); err != nil {
-				return apperr.New("session_save_failed", "Playback finished, but its last position could not be saved.", "Completed audio remains in the local cache.", err)
-			}
-		}
+	if playbackMode {
 		if sessionStore != nil {
 			last := plan.Segments[len(plan.Segments)-1]
 			state := session.State{

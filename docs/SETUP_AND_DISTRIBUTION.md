@@ -22,11 +22,13 @@ version.
 
 The setup command syncs the complete dependency lock for Kokoro 0.9.4,
 English G2P model 3.8.0, CTranslate2 4.8.2, and SentencePiece 0.2.1, including
-pinned transitive packages and SHA-256 hashes. It selects CPU PyTorch, asks for
-a listening language, configures its default voice, and runs a short local
-synthesis check. Only configured language pipelines are loaded by setup.
-Voice and speech-model files are cached beneath
-`$XDG_CACHE_HOME/listen/huggingface`.
+pinned transitive packages and SHA-256 hashes. It selects CPU PyTorch. In an
+interactive terminal, setup guides the user through one or more listening
+languages, a default voice for each, and the optional local translation
+install. Pressing Enter keeps the displayed defaults. Non-interactive setup
+uses saved or default choices. The selected voice pipelines are loaded and
+health-checked before config is saved. Voice and speech-model files are cached
+beneath `$XDG_CACHE_HOME/listen/huggingface`.
 
 Local translation is opt-in. Run `listen setup --translate en:pt-BR` to ensure
 the speech runtime, configure and health-check a Brazilian Portuguese voice,
@@ -91,14 +93,18 @@ saved only after the synthesis check succeeds.
 
 1. Check host architecture/OS.
 2. Check mpv/ffmpeg availability.
-3. Provision compatible Python runtime/environment if needed.
+3. Provision or reuse the private Python runtime/environment.
 4. Sync hash-locked speech and translation worker dependencies.
-5. Ask listening languages.
-6. Download/verify required models/voices.
-7. Synthesize a short local health sample.
-8. If `--translate en:pt-BR` was supplied, verify/download that local model,
-   start its worker, and check its pair capability.
-9. Save setup state only after the requested health checks pass.
+5. In an interactive terminal, select listening languages and default voices;
+   preserve saved/default choices without a terminal.
+6. Offer local English-to-Brazilian-Portuguese translation unless the user
+   supplied `--translate en:pt-BR` explicitly.
+7. Synthesize a short local health sample for every configured voice.
+8. If local translation was selected, download and verify that model, start
+   its worker, and check its language-pair capability.
+9. Save setup preferences only after the requested health checks pass.
+10. Before translated playback, measure viability using opening segments of
+    that source; setup does not upload sample or source text.
 
 ## Doctor
 

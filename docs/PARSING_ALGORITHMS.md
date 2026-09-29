@@ -220,4 +220,5 @@ PDF_SCANNED_NEEDS_OCR
 PDF_READING_ORDER_LOW_CONFIDENCE
 ```
 
-`listen inspect` can render detailed messages. Normal playback only surfaces warnings that materially prevent reliable listening.
+The planned `listen inspect` command can render detailed messages. Normal
+playback only surfaces warnings that materially prevent reliable listening.
