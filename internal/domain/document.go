@@ -85,6 +85,7 @@ const (
 	StructurePDFBookmark StructureSource = "pdf_bookmark"
 	StructureHeuristic   StructureSource = "heuristic"
 	StructureDirectory   StructureSource = "directory"
+	StructureCodeAST     StructureSource = "code_ast"
 )
 
 // OutlineNode maps structure to a half-open interval over Document.Blocks.

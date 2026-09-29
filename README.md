@@ -10,6 +10,7 @@ listen setup --translate en:pt-BR
 listen book.epub
 listen book.epub --translate pt-BR
 listen README.md
+listen main.go --code
 listen docs/
 listen book.epub --export
 ```
@@ -19,6 +20,9 @@ Directory inputs honor applicable `.gitignore` rules and keep each block's
 source path in the shared document model.
 
 Everything complicated lives behind those commands: structure parsing, resumable caches, translation backends, local-vs-cloud planning, Kokoro process management, ordered concurrent generation, buffering, playback, and export.
+
+listen main.go --code opts into Go AST narration of package structure,
+signatures, comments, and recognized control flow.
 
 This repository is an implementation foundation. The Python prototype under `reference/python-prototype/` is the behavioral reference for the existing TTS/cache/section UX; the new architecture is Go-first, with Python limited to long-lived Kokoro and optional local translation inference workers.
 

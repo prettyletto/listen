@@ -330,3 +330,37 @@ directory paths from different working directories could reuse stale absolute
 source paths. The cache now keys directory plans by resolved absolute path, and
 the reviewer confirmed the regression is closed with no remaining P0–P2
 findings.
+
+## Slice 12 — Go AST code narration
+
+**Scenario:** `listen main.go --code` narrates package structure, declarations,
+comments, signatures, and recognized control flow through the reader pipeline.
+
+**Status:** Complete after independent reviewer approval. Go narration remains
+opt-in, and code-mode structure manifests have their own parser-versioned
+identity.
+
+**Implemented:** `go/parser` and AST nodes produce spoken package/import
+overviews, type and function signatures, doc comments, and concise control-flow
+summaries. Method section titles include receiver types and stable outline IDs
+include raw receiver identities. Source reads are capped at 8 MiB and parsed
+documents at 250,000 AST nodes; context cancellation is checked during AST
+validation and nested body narration. Narrated blocks use the existing
+segmentation, cache, speech, playback, and export path.
+
+**Verified:** A golden fixture covers package/import summaries, types,
+interfaces, signatures, comments, control flow, and same-named methods on
+different receiver types. Tests cover opt-in parser selection, shared pipeline
+use, separate cache identity, receiver-unique outline IDs, cancellation,
+resource limits, and actionable CLI errors. `go test ./...`, `go vet ./...`,
+CLI help, and `git diff --check` pass.
+
+**Reviewer:** Approved after follow-up by an independent read-only reviewer.
+The first review found duplicate method outline IDs and inadequate cancellation
+checks during body narration. Receiver-aware identities, bounded input/AST
+work, and context checks resolve both findings. A final cache-path review
+confirmed unsupported extensions are rejected before code-mode size checks or
+fingerprinting; no P0–P2 findings remain.
+
+**Current limit:** Numeric literals retain their Go source spelling, so
+hexadecimal or underscored values may not sound as naturally as decimal values.

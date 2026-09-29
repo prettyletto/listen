@@ -6,6 +6,7 @@ The CLI is intentionally narrow. Advanced capability is discoverable without con
 
 ```text
 listen <source>
+listen main.go --code
 listen <source> --translate <BCP-47>
 listen <source> --export [directory]
 listen setup
@@ -15,7 +16,8 @@ listen setup --translate en:pt-BR
 `<source>` may be a file, directory, or `-` for stdin. File type is inferred
 from content/extension; users do not choose parsers. The reader supports
 UTF-8 plain-text files, Markdown, HTML, EPUB books, text-based PDFs, and
-documentation directories. Directory behavior is specified in
+documentation directories. Go source files are narrated with the explicit
+`--code` option. Directory behavior is specified in
 [`DIRECTORY_SOURCES.md`](DIRECTORY_SOURCES.md).
 
 ## Discovery
@@ -44,10 +46,16 @@ listen --help
 --no-play
 --from <chapter-or-section>
 --include-code
+--code
 --verbose
 ```
 
 Do not require these for normal use.
+
+--code opts into Go AST narration for .go files. It speaks package and import
+overviews, type and function signatures, doc comments, and concise summaries
+of recognized control flow. Without this flag, source detection keeps its
+normal reader behavior.
 
 `--no-play` generates and caches audio without opening mpv; it is useful for
 automation and validating local speech setup.

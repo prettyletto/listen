@@ -3,15 +3,18 @@ package app
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/prettyletto/listen/internal/cache"
+	"github.com/prettyletto/listen/internal/domain"
 	"github.com/prettyletto/listen/internal/pipeline"
 	"github.com/prettyletto/listen/internal/segment"
 	"github.com/prettyletto/listen/internal/source"
+	gocodesource "github.com/prettyletto/listen/internal/source/gocode"
 	"github.com/prettyletto/listen/internal/speech"
 	"github.com/prettyletto/listen/internal/speech/kokoro"
 )
@@ -27,11 +30,11 @@ func TestDocumentAndSegmentManifestsArePersistedByVersionedIdentity(t *testing.T
 		t.Fatal(err)
 	}
 	input := source.Input{Name: filepath.Base(path), Path: path}
-	keyBefore, reusable, err := documentCacheKey(context.Background(), input)
+	keyBefore, reusable, err := documentCacheKey(context.Background(), input, false)
 	if err != nil || !reusable {
 		t.Fatalf("document cache identity reusable=%v err=%v", reusable, err)
 	}
-	doc, err := parseCachedDocument(context.Background(), input, store)
+	doc, err := parseCachedDocument(context.Background(), input, store, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +45,7 @@ func TestDocumentAndSegmentManifestsArePersistedByVersionedIdentity(t *testing.T
 	if err != nil || !found || storedDoc.ID != doc.ID {
 		t.Fatalf("structure manifest found=%v id=%q err=%v", found, storedDoc.ID, err)
 	}
-	cachedDoc, err := parseCachedDocument(context.Background(), input, store)
+	cachedDoc, err := parseCachedDocument(context.Background(), input, store, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,12 +74,90 @@ func TestDocumentAndSegmentManifestsArePersistedByVersionedIdentity(t *testing.T
 	if err := os.WriteFile(path, []byte("Chapter 1\n\nChanged source."), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	keyAfter, _, err := documentCacheKey(context.Background(), input)
+	keyAfter, _, err := documentCacheKey(context.Background(), input, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if keyBefore == keyAfter {
 		t.Fatal("source edit did not change the structure manifest key")
+	}
+}
+
+func TestCodeNarrationUsesASeparateStructureManifest(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.go")
+	if err := os.WriteFile(path, []byte("package main\nfunc Run() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := cache.NewFileStore(filepath.Join(root, "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := source.Input{Name: filepath.Base(path), Path: path}
+	plainKey, _, err := documentCacheKey(context.Background(), input, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codeKey, _, err := documentCacheKey(context.Background(), input, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plainKey == codeKey {
+		t.Fatal("plain reading and AST narration share a structure-manifest key")
+	}
+	plain, err := parseCachedDocument(context.Background(), input, store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrated, err := parseCachedDocument(context.Background(), input, store, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cachedNarrated, err := parseCachedDocument(context.Background(), input, store, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.Format != domain.FormatText || narrated.Format != domain.FormatCode {
+		t.Fatalf("parser modes returned formats %q and %q", plain.Format, narrated.Format)
+	}
+	if !reflect.DeepEqual(narrated, cachedNarrated) {
+		t.Fatal("Go narration structure manifest was not reused")
+	}
+}
+
+func TestCodeManifestRejectsOversizedFileBeforeFingerprinting(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.go")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(gocodesource.MaxSourceBytes + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = documentCacheKey(context.Background(), source.Input{Name: filepath.Base(path), Path: path}, true)
+	if !errors.Is(err, gocodesource.ErrSourceTooLarge) {
+		t.Fatalf("document cache key error = %v, want ErrSourceTooLarge", err)
+	}
+
+	unsupportedPath := filepath.Join(filepath.Dir(path), "large.txt")
+	unsupportedFile, err := os.Create(unsupportedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unsupportedFile.Truncate(gocodesource.MaxSourceBytes + 1); err != nil {
+		_ = unsupportedFile.Close()
+		t.Fatal(err)
+	}
+	if err := unsupportedFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = documentCacheKey(context.Background(), source.Input{Name: filepath.Base(unsupportedPath), Path: unsupportedPath}, true)
+	if !errors.Is(err, gocodesource.ErrNotGoSource) {
+		t.Fatalf("unsupported code manifest error = %v, want ErrNotGoSource", err)
 	}
 }
 
@@ -106,10 +187,10 @@ func TestDirectoryStructureIsReparsedAfterFileSetChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	input := source.Input{Name: "docs", Path: root}
-	if _, reusable, err := documentCacheKey(context.Background(), input); err != nil || reusable {
+	if _, reusable, err := documentCacheKey(context.Background(), input, false); err != nil || reusable {
 		t.Fatalf("directory manifest should be recomputed: reusable=%v err=%v", reusable, err)
 	}
-	first, err := parseCachedDocument(context.Background(), input, store)
+	first, err := parseCachedDocument(context.Background(), input, store, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +198,7 @@ func TestDirectoryStructureIsReparsedAfterFileSetChanges(t *testing.T) {
 	if err := os.WriteFile(secondPath, []byte("# Guide\n\nSecond document."), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	second, err := parseCachedDocument(context.Background(), input, store)
+	second, err := parseCachedDocument(context.Background(), input, store, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +237,7 @@ func TestRelativeDirectoryPlanCacheIdentityIncludesWorkingDirectory(t *testing.T
 	if err := os.Chdir(filepath.Dir(firstRoot)); err != nil {
 		t.Fatal(err)
 	}
-	firstDoc, err := parseCachedDocument(ctx, source.Input{Name: "docs", Path: "docs"}, store)
+	firstDoc, err := parseCachedDocument(ctx, source.Input{Name: "docs", Path: "docs"}, store, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +248,7 @@ func TestRelativeDirectoryPlanCacheIdentityIncludesWorkingDirectory(t *testing.T
 	if err := os.Chdir(filepath.Dir(secondRoot)); err != nil {
 		t.Fatal(err)
 	}
-	secondDoc, err := parseCachedDocument(ctx, source.Input{Name: "docs", Path: "docs"}, store)
+	secondDoc, err := parseCachedDocument(ctx, source.Input{Name: "docs", Path: "docs"}, store, false)
 	if err != nil {
 		t.Fatal(err)
 	}

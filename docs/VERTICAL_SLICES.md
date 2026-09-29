@@ -260,6 +260,11 @@ Start with Go only using `go/parser`/AST:
 - package/import overview;
 - type/function signatures in spoken form;
 - doc comments;
-- optional body-level control-flow narration.
+- concise body-level control-flow narration.
 
 Do not make source code first-class until book/document experience is solid.
+
+Exit: the Go golden fixture demonstrates spoken package/import summaries,
+type and function signatures, doc comments, and control-flow narration. The
+CLI flag selects this parser only when requested, and generated speech uses
+the shared reader pipeline and cache.

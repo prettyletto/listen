@@ -1,0 +1,435 @@
+{
+  "format": "code",
+  "metadata": {
+    "Title": "narration",
+    "Authors": null,
+    "Language": ""
+  },
+  "warnings": null,
+  "blocks": [
+    {
+      "seq": 0,
+      "kind": "heading",
+      "text": "Package catalog",
+      "level": 1,
+      "byte_start": 75,
+      "byte_end": 82,
+      "semantics": [
+        "language:go",
+        "package"
+      ]
+    },
+    {
+      "seq": 1,
+      "kind": "paragraph",
+      "text": "Package catalog reads a local index and keeps its source order.",
+      "level": 0,
+      "byte_start": 0,
+      "byte_end": 66,
+      "semantics": [
+        "language:go",
+        "doc-comment"
+      ]
+    },
+    {
+      "seq": 2,
+      "kind": "heading",
+      "text": "Imports",
+      "level": 2,
+      "byte_start": 94,
+      "byte_end": 119,
+      "semantics": [
+        "language:go",
+        "imports"
+      ]
+    },
+    {
+      "seq": 3,
+      "kind": "paragraph",
+      "text": "Imports context, errors, and io.",
+      "level": 0,
+      "byte_start": 94,
+      "byte_end": 119,
+      "semantics": [
+        "language:go",
+        "imports"
+      ]
+    },
+    {
+      "seq": 4,
+      "kind": "heading",
+      "text": "Type entry",
+      "level": 2,
+      "byte_start": 123,
+      "byte_end": 223,
+      "semantics": [
+        "language:go",
+        "declaration"
+      ]
+    },
+    {
+      "seq": 5,
+      "kind": "paragraph",
+      "text": "Entry stores an identifier and a short display name.",
+      "level": 0,
+      "byte_start": 123,
+      "byte_end": 178,
+      "semantics": [
+        "language:go",
+        "doc-comment"
+      ]
+    },
+    {
+      "seq": 6,
+      "kind": "paragraph",
+      "text": "Type entry is a struct with fields id as an int and name as a string.",
+      "level": 0,
+      "byte_start": 184,
+      "byte_end": 223,
+      "semantics": [
+        "language:go",
+        "type-signature"
+      ]
+    },
+    {
+      "seq": 7,
+      "kind": "heading",
+      "text": "Type reader",
+      "level": 2,
+      "byte_start": 225,
+      "byte_end": 331,
+      "semantics": [
+        "language:go",
+        "declaration"
+      ]
+    },
+    {
+      "seq": 8,
+      "kind": "paragraph",
+      "text": "Reader loads entries in stable order.",
+      "level": 0,
+      "byte_start": 225,
+      "byte_end": 265,
+      "semantics": [
+        "language:go",
+        "doc-comment"
+      ]
+    },
+    {
+      "seq": 9,
+      "kind": "paragraph",
+      "text": "Type reader is an interface with read function accepting a context type from context and returning a slice of entry and an error.",
+      "level": 0,
+      "byte_start": 271,
+      "byte_end": 331,
+      "semantics": [
+        "language:go",
+        "type-signature"
+      ]
+    },
+    {
+      "seq": 10,
+      "kind": "heading",
+      "text": "Type stream",
+      "level": 2,
+      "byte_start": 333,
+      "byte_end": 401,
+      "semantics": [
+        "language:go",
+        "declaration"
+      ]
+    },
+    {
+      "seq": 11,
+      "kind": "paragraph",
+      "text": "Stream provides a closeable view of entries.",
+      "level": 0,
+      "byte_start": 333,
+      "byte_end": 380,
+      "semantics": [
+        "language:go",
+        "doc-comment"
+      ]
+    },
+    {
+      "seq": 12,
+      "kind": "paragraph",
+      "text": "Type stream is an empty struct.",
+      "level": 0,
+      "byte_start": 386,
+      "byte_end": 401,
+      "semantics": [
+        "language:go",
+        "type-signature"
+      ]
+    },
+    {
+      "seq": 13,
+      "kind": "heading",
+      "text": "Method close on entry",
+      "level": 2,
+      "byte_start": 403,
+      "byte_end": 484,
+      "semantics": [
+        "language:go",
+        "method"
+      ]
+    },
+    {
+      "seq": 14,
+      "kind": "paragraph",
+      "text": "Close releases the reader resource.",
+      "level": 0,
+      "byte_start": 403,
+      "byte_end": 441,
+      "semantics": [
+        "language:go",
+        "doc-comment"
+      ]
+    },
+    {
+      "seq": 15,
+      "kind": "paragraph",
+      "text": "Method close on an entry returns an error.",
+      "level": 0,
+      "byte_start": 442,
+      "byte_end": 468,
+      "semantics": [
+        "language:go",
+        "function-signature"
+      ]
+    },
+    {
+      "seq": 16,
+      "kind": "paragraph",
+      "text": "It returns nil.",
+      "level": 0,
+      "byte_start": 472,
+      "byte_end": 482,
+      "semantics": [
+        "language:go",
+        "control-flow"
+      ]
+    },
+    {
+      "seq": 17,
+      "kind": "heading",
+      "text": "Method close on pointer to stream",
+      "level": 2,
+      "byte_start": 486,
+      "byte_end": 569,
+      "semantics": [
+        "language:go",
+        "method"
+      ]
+    },
+    {
+      "seq": 18,
+      "kind": "paragraph",
+      "text": "Close releases the stream resource.",
+      "level": 0,
+      "byte_start": 486,
+      "byte_end": 524,
+      "semantics": [
+        "language:go",
+        "doc-comment"
+      ]
+    },
+    {
+      "seq": 19,
+      "kind": "paragraph",
+      "text": "Method close on a pointer to stream returns an error.",
+      "level": 0,
+      "byte_start": 525,
+      "byte_end": 553,
+      "semantics": [
+        "language:go",
+        "function-signature"
+      ]
+    },
+    {
+      "seq": 20,
+      "kind": "paragraph",
+      "text": "It returns nil.",
+      "level": 0,
+      "byte_start": 557,
+      "byte_end": 567,
+      "semantics": [
+        "language:go",
+        "control-flow"
+      ]
+    },
+    {
+      "seq": 21,
+      "kind": "heading",
+      "text": "Function load",
+      "level": 2,
+      "byte_start": 571,
+      "byte_end": 972,
+      "semantics": [
+        "language:go",
+        "function"
+      ]
+    },
+    {
+      "seq": 22,
+      "kind": "paragraph",
+      "text": "Load reads one item and returns an error when the source is empty.",
+      "level": 0,
+      "byte_start": 571,
+      "byte_end": 640,
+      "semantics": [
+        "language:go",
+        "doc-comment"
+      ]
+    },
+    {
+      "seq": 23,
+      "kind": "paragraph",
+      "text": "Function load accepts ctx as a context type from context and source as a reader type from io. It returns a slice of entry and an error.",
+      "level": 0,
+      "byte_start": 641,
+      "byte_end": 706,
+      "semantics": [
+        "language:go",
+        "function-signature"
+      ]
+    },
+    {
+      "seq": 24,
+      "kind": "paragraph",
+      "text": "If the error reported by ctx does not equal nil, it returns nil and a new error containing the text request canceled.",
+      "level": 0,
+      "byte_start": 710,
+      "byte_end": 779,
+      "semantics": [
+        "language:go",
+        "control-flow"
+      ]
+    },
+    {
+      "seq": 25,
+      "kind": "paragraph",
+      "text": "It assigns all bytes read from source to data and err.",
+      "level": 0,
+      "byte_start": 782,
+      "byte_end": 813,
+      "semantics": [
+        "language:go",
+        "control-flow"
+      ]
+    },
+    {
+      "seq": 26,
+      "kind": "paragraph",
+      "text": "If err does not equal nil, it returns nil and err.",
+      "level": 0,
+      "byte_start": 815,
+      "byte_end": 851,
+      "semantics": [
+        "language:go",
+        "control-flow"
+      ]
+    },
+    {
+      "seq": 27,
+      "kind": "paragraph",
+      "text": "If the length of data equals 0, it returns nil and a new error containing the text empty source.",
+      "level": 0,
+      "byte_start": 853,
+      "byte_end": 916,
+      "semantics": [
+        "language:go",
+        "control-flow"
+      ]
+    },
+    {
+      "seq": 28,
+      "kind": "paragraph",
+      "text": "It returns a value of type slice of entry and nil.",
+      "level": 0,
+      "byte_start": 918,
+      "byte_end": 970,
+      "semantics": [
+        "language:go",
+        "control-flow"
+      ]
+    }
+  ],
+  "outline": [
+    {
+      "title": "Package catalog",
+      "role": "book",
+      "depth": 0,
+      "start_block": 0,
+      "end_block_exclusive": 29,
+      "confidence": "high",
+      "provenance": "code_ast",
+      "children": [
+        {
+          "title": "Imports",
+          "role": "section",
+          "depth": 1,
+          "start_block": 2,
+          "end_block_exclusive": 4,
+          "confidence": "high",
+          "provenance": "code_ast"
+        },
+        {
+          "title": "Type entry",
+          "role": "section",
+          "depth": 1,
+          "start_block": 4,
+          "end_block_exclusive": 7,
+          "confidence": "high",
+          "provenance": "code_ast"
+        },
+        {
+          "title": "Type reader",
+          "role": "section",
+          "depth": 1,
+          "start_block": 7,
+          "end_block_exclusive": 10,
+          "confidence": "high",
+          "provenance": "code_ast"
+        },
+        {
+          "title": "Type stream",
+          "role": "section",
+          "depth": 1,
+          "start_block": 10,
+          "end_block_exclusive": 13,
+          "confidence": "high",
+          "provenance": "code_ast"
+        },
+        {
+          "title": "Method close on entry",
+          "role": "section",
+          "depth": 1,
+          "start_block": 13,
+          "end_block_exclusive": 17,
+          "confidence": "high",
+          "provenance": "code_ast"
+        },
+        {
+          "title": "Method close on pointer to stream",
+          "role": "section",
+          "depth": 1,
+          "start_block": 17,
+          "end_block_exclusive": 21,
+          "confidence": "high",
+          "provenance": "code_ast"
+        },
+        {
+          "title": "Function load",
+          "role": "section",
+          "depth": 1,
+          "start_block": 21,
+          "end_block_exclusive": 29,
+          "confidence": "high",
+          "provenance": "code_ast"
+        }
+      ]
+    }
+  ]
+}

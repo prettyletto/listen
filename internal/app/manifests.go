@@ -15,6 +15,7 @@ import (
 	"github.com/prettyletto/listen/internal/domain"
 	"github.com/prettyletto/listen/internal/segment"
 	"github.com/prettyletto/listen/internal/source"
+	gocodesource "github.com/prettyletto/listen/internal/source/gocode"
 	"github.com/prettyletto/listen/internal/speech"
 	"github.com/prettyletto/listen/internal/speech/kokoro"
 )
@@ -24,8 +25,8 @@ const (
 	planManifestVersion     = "semantic-v2"
 )
 
-func parseCachedDocument(ctx context.Context, input source.Input, store *cache.FileStore) (*domain.Document, error) {
-	key, reusable, err := documentCacheKey(ctx, input)
+func parseCachedDocument(ctx context.Context, input source.Input, store *cache.FileStore, codeMode bool) (*domain.Document, error) {
+	key, reusable, err := documentCacheKey(ctx, input, codeMode)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +40,7 @@ func parseCachedDocument(ctx context.Context, input source.Input, store *cache.F
 			return &cached, nil
 		}
 	}
-	doc, err := parseDocument(ctx, input)
+	doc, err := parseDocumentWithCodeMode(ctx, input, codeMode)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func parseCachedDocument(ctx context.Context, input source.Input, store *cache.F
 	return doc, nil
 }
 
-func documentCacheKey(ctx context.Context, input source.Input) (string, bool, error) {
+func documentCacheKey(ctx context.Context, input source.Input, codeMode bool) (string, bool, error) {
 	if input.Path == "" || input.Path == "stdin" || input.R != nil {
 		return "", false, nil
 	}
@@ -69,9 +70,24 @@ func documentCacheKey(ctx context.Context, input source.Input) (string, bool, er
 		// Parse it on each run rather than reusing a manifest keyed by one path.
 		return "", false, nil
 	}
+	if codeMode {
+		sourceName := input.Name
+		if sourceName == "" {
+			sourceName = input.Path
+		}
+		if !strings.EqualFold(filepath.Ext(sourceName), ".go") {
+			return "", false, gocodesource.ErrNotGoSource
+		}
+		if info.Size() > gocodesource.MaxSourceBytes {
+			return "", false, gocodesource.ErrSourceTooLarge
+		}
+	}
 	digest, err := fingerprintFile(ctx, path)
 	if err != nil {
 		return "", false, fmt.Errorf("fingerprint source: %w", err)
+	}
+	if codeMode {
+		return cache.Key(documentManifestVersion, gocodesource.ParserVersion, "go-code", path, strings.ToLower(filepath.Ext(input.Name)), digest), true, nil
 	}
 	return cache.Key(documentManifestVersion, path, strings.ToLower(filepath.Ext(input.Name)), digest), true, nil
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/prettyletto/listen/internal/source"
 	directorysource "github.com/prettyletto/listen/internal/source/directory"
 	epubsource "github.com/prettyletto/listen/internal/source/epub"
+	gocodesource "github.com/prettyletto/listen/internal/source/gocode"
 	htmlsource "github.com/prettyletto/listen/internal/source/html"
 	markdownsource "github.com/prettyletto/listen/internal/source/markdown"
 	pdfsource "github.com/prettyletto/listen/internal/source/pdf"
@@ -39,7 +40,7 @@ import (
 const usage = `listen — make readable things listenable
 
 Usage:
-  listen <source> [--translate BCP-47] [--voice ID] [--speed RATE] [--playback-speed RATE]
+  listen <source> [--translate BCP-47] [--code] [--voice ID] [--speed RATE] [--playback-speed RATE]
   listen <source> --export [DIRECTORY]
   listen <source> --no-play
   listen - --no-play
@@ -47,6 +48,7 @@ Usage:
 
 Options:
   --translate BCP-47     Translate to this language using local/cloud policy
+  --code                 Narrate Go source structure and behavior
   --voice ID             Local speech voice (default af_heart)
   --speed RATE           Speech generation rate from 0.5 to 2.0 (default 1)
   --playback-speed RATE  Playback rate from 0.5 to 3.0 (default 1)
@@ -61,7 +63,7 @@ Commands:
   models                 List available OpenAI translation models
   doctor                 Inspect local runtime and player readiness
 
-Current sources: UTF-8 text files, Markdown files, HTML documents, EPUB books, text-based PDFs, and documentation directories.
+Current sources: UTF-8 text files, Markdown files, HTML documents, EPUB books, text-based PDFs, and documentation directories. Go files use --code.
 `
 
 type listenOptions struct {
@@ -73,6 +75,7 @@ type listenOptions struct {
 	noPlay         bool
 	exportAudio    bool
 	exportPath     string
+	code           bool
 	help           bool
 	version        bool
 	voiceExplicit  bool
@@ -149,6 +152,11 @@ func parseListenOptions(args []string) (listenOptions, error) {
 				return options, fmt.Errorf("%s does not take a value", name)
 			}
 			options.noPlay = true
+		case "--code":
+			if hasValue {
+				return options, fmt.Errorf("%s does not take a value", name)
+			}
+			options.code = true
 		case "--export":
 			options.exportAudio = true
 			if hasValue {
@@ -345,12 +353,18 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 	if err != nil {
 		return apperr.New("storage_unavailable", "Could not prepare local audio storage.", "Check that your cache directory is writable.", err)
 	}
-	doc, err := parseCachedDocument(ctx, input, manifests)
+	doc, err := parseCachedDocument(ctx, input, manifests, options.code)
 	if err != nil {
 		if ctx.Err() != nil {
 			return interrupted(ctx.Err())
 		}
 		switch {
+		case options.code && errors.Is(err, gocodesource.ErrNotGoSource):
+			return apperr.New("code_source_unsupported", "Code narration currently supports Go source files only.", "Pass a .go file with --code.", err)
+		case options.code && (errors.Is(err, gocodesource.ErrSourceTooLarge) || errors.Is(err, gocodesource.ErrSourceTooComplex)):
+			return apperr.New("code_resource_limit", "This Go source file is too large or complex to narrate.", "Split it into smaller Go files and run listen --code again.", err)
+		case options.code && errors.Is(err, gocodesource.ErrInvalidGoSource):
+			return apperr.New("code_parse_failed", "This Go source file could not be parsed.", "Check its Go syntax and UTF-8 encoding, then run listen --code again.", err)
 		case errors.Is(err, os.ErrNotExist):
 			return apperr.New("source_missing", "Could not find the source file.", "Check the file path and try again.", err)
 		case errors.Is(err, textsource.ErrBinarySource):
@@ -386,6 +400,9 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 			}
 			if info, statErr := os.Stat(input.Path); statErr == nil && info.IsDir() {
 				return apperr.New("source_read_failed", "Could not read this documentation directory.", "Check that its files and .gitignore rules are readable, then try again.", err)
+			}
+			if options.code {
+				return apperr.New("code_parse_failed", "Could not read this Go source file.", "Check that the file is valid Go source, then run listen again.", err)
 			}
 			return apperr.New("source_read_failed", "Could not read the text source.", "Check that the file is readable and try again.", err)
 		}
@@ -798,6 +815,13 @@ func startAuthorizedCloudTranslator(ctx context.Context, config settings.Config,
 }
 
 func parseDocument(ctx context.Context, input source.Input) (*domain.Document, error) {
+	return parseDocumentWithCodeMode(ctx, input, false)
+}
+
+func parseDocumentWithCodeMode(ctx context.Context, input source.Input, codeMode bool) (*domain.Document, error) {
+	if codeMode {
+		return gocodesource.NewParser().Parse(ctx, input)
+	}
 	parsers := []source.Parser{epubsource.NewParser(), htmlsource.NewParser(), pdfsource.NewParser(), markdownsource.NewParser(), textsource.NewParser()}
 	allParsers := append([]source.Parser{directorysource.NewParser(parsers...)}, parsers...)
 	selected, err := source.SelectParser(ctx, input, allParsers...)

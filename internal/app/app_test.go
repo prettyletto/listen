@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
@@ -15,6 +16,7 @@ import (
 	"github.com/prettyletto/listen/internal/domain"
 	"github.com/prettyletto/listen/internal/settings"
 	"github.com/prettyletto/listen/internal/source"
+	gocodesource "github.com/prettyletto/listen/internal/source/gocode"
 	"github.com/prettyletto/listen/internal/speech"
 	"github.com/prettyletto/listen/internal/speech/kokoro"
 )
@@ -25,7 +27,7 @@ func TestRunPrintsHelp(t *testing.T) {
 		if err := Run(context.Background(), args, strings.NewReader(""), &stdout, &bytes.Buffer{}); err != nil {
 			t.Fatalf("Run(%v): %v", args, err)
 		}
-		if !strings.Contains(stdout.String(), "listen <source>") || !strings.Contains(stdout.String(), "--export [DIRECTORY]") || !strings.Contains(stdout.String(), "--translate BCP-47") || !strings.Contains(stdout.String(), "documentation directories") {
+		if !strings.Contains(stdout.String(), "listen <source>") || !strings.Contains(stdout.String(), "--export [DIRECTORY]") || !strings.Contains(stdout.String(), "--translate BCP-47") || !strings.Contains(stdout.String(), "--code") || !strings.Contains(stdout.String(), "documentation directories") {
 			t.Fatalf("Run(%v) did not explain the default command: %q", args, stdout.String())
 		}
 	}
@@ -87,6 +89,108 @@ func TestParseListenOptionsAcceptsFlagsBeforeAndAfterSource(t *testing.T) {
 	}
 	if _, err := parseListenOptions([]string{"book.txt", "--translate", "pt--BR"}); err == nil {
 		t.Fatal("accepted a malformed BCP-47 target language")
+	}
+}
+
+func TestParseListenOptionsSupportsCodeNarrationFlag(t *testing.T) {
+	for _, args := range [][]string{{"--code", "main.go"}, {"main.go", "--code"}} {
+		options, err := parseListenOptions(args)
+		if err != nil {
+			t.Fatalf("parse %v: %v", args, err)
+		}
+		if options.source != "main.go" || !options.code {
+			t.Fatalf("code narration options = %#v", options)
+		}
+	}
+	if _, err := parseListenOptions([]string{"main.go", "--code=true"}); err == nil {
+		t.Fatal("accepted a value for the code narration flag")
+	}
+}
+
+func TestCodeNarrationIsOptInAndRunsThroughTheSpeechPipeline(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	var spoken []string
+	deps := runtimeDeps{
+		startSynth: func(_ context.Context, _ kokoro.Options) (speech.Synthesizer, error) {
+			return appTestSynth{t: t, onRequest: func(request speech.Request) {
+				spoken = append(spoken, request.Segment.SpokenText)
+			}}, nil
+		},
+	}
+	path := filepath.Join("..", "..", "testdata", "go", "narration.go")
+	if err := runWithRuntime(context.Background(), []string{path, "--code", "--no-play"}, nil, io.Discard, io.Discard, deps); err != nil {
+		t.Fatalf("listen to Go source: %v", err)
+	}
+	joined := strings.Join(spoken, "\n")
+	for _, want := range []string{"Package catalog", "Function load accepts", "If the error reported by ctx"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("spoken code narration is missing %q:\n%s", want, joined)
+		}
+	}
+	for _, unwanted := range []string{"func Load(", "ctx.Err() !=", "io.ReadAll("} {
+		if strings.Contains(joined, unwanted) {
+			t.Errorf("raw Go punctuation reached speech (%q):\n%s", unwanted, joined)
+		}
+	}
+}
+
+func TestCodeNarrationParserIsOnlySelectedWithCodeFlag(t *testing.T) {
+	path := filepath.Join("..", "..", "testdata", "go", "narration.go")
+	ordinary, err := parseDocument(context.Background(), source.Input{Name: "narration.go", Path: path})
+	if err != nil {
+		t.Fatalf("parse ordinary Go source: %v", err)
+	}
+	if ordinary.Format != domain.FormatText {
+		t.Fatalf("default Go parsing format = %q, want plain text", ordinary.Format)
+	}
+	narrated, err := parseDocumentWithCodeMode(context.Background(), source.Input{Name: "narration.go", Path: path}, true)
+	if err != nil {
+		t.Fatalf("parse Go source in code mode: %v", err)
+	}
+	if narrated.Format != domain.FormatCode {
+		t.Fatalf("--code parsing format = %q, want code", narrated.Format)
+	}
+}
+
+func TestCodeFlagRejectsUnsupportedFormatsWithActionableError(t *testing.T) {
+	path := filepath.Join("..", "..", "testdata", "markdown", "nested.md")
+	err := Run(context.Background(), []string{path, "--code"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if !apperr.HasCode(err, "code_source_unsupported") {
+		t.Fatalf("got %v, want code_source_unsupported", err)
+	}
+	var appError *apperr.Error
+	if !errors.As(err, &appError) || !strings.Contains(appError.Hint, ".go") {
+		t.Fatalf("unsupported code source error did not name the required extension: %#v", appError)
+	}
+}
+
+func TestCodeNarrationReportsResourceLimitsActionably(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	path := filepath.Join(home, "large.go")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(gocodesource.MaxSourceBytes + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	err = runWithRuntime(context.Background(), []string{path, "--code"}, strings.NewReader(""), io.Discard, io.Discard, runtimeDeps{})
+	if !apperr.HasCode(err, "code_resource_limit") {
+		t.Fatalf("got %v, want code_resource_limit", err)
+	}
+	var appError *apperr.Error
+	if !errors.As(err, &appError) || !strings.Contains(appError.Hint, "smaller Go files") {
+		t.Fatalf("resource limit error lacks actionable hint: %#v", appError)
 	}
 }
 
