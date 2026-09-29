@@ -17,10 +17,12 @@ listen book.epub --export
 
 In an interactive Linux terminal, a book with chapters opens a start picker:
 read the full book from the beginning, resume an unfinished session, or start
-at a chapter and continue through the rest. While audio plays, use **Space**
-to pause/resume, **Left/Right** or **p/n** to move between chapters, and **q**
-or **Ctrl-C** to stop and save your place. Piped and other non-interactive runs
-do not open the picker.
+at a chapter and continue through the rest. The book title appears once above
+the chapter list; press **/** to search long lists, **↑/↓** or **j/k** to move,
+then **Enter** to start. While audio plays, use **Space** to pause/resume,
+**Left/Right** or **p/n** to move between chapters, and **q** or **Ctrl-C** to
+stop and save your place. Piped and other non-interactive runs do not open the
+picker.
 
 `listen docs/` reads supported documentation files into one ordered session.
 Directory inputs honor applicable `.gitignore` rules and keep each block's

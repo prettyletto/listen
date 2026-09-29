@@ -18,16 +18,19 @@ import (
 
 func TestChaptersForPlanGroupsSegmentsByMajorUnit(t *testing.T) {
 	plan := segment.Plan{DocumentID: "book", Segments: []segment.Segment{
-		{Seq: 0, MajorUnitID: "chapter-1", SectionPath: []string{"Part I", "Chapter 1"}},
-		{Seq: 1, MajorUnitID: "chapter-1", SectionPath: []string{"Part I", "Chapter 1"}},
-		{Seq: 2, MajorUnitID: "chapter-2", SectionPath: []string{"Part I", "Chapter 2"}},
+		{Seq: 0, MajorUnitID: "chapter-1", SectionPath: []string{"Example Book", "Part I", "Chapter 1"}},
+		{Seq: 1, MajorUnitID: "chapter-1", SectionPath: []string{"Example Book", "Part I", "Chapter 1"}},
+		{Seq: 2, MajorUnitID: "chapter-2", SectionPath: []string{"Example Book", "Part I", "Chapter 2"}},
 	}}
-	chapters := chaptersForPlan(plan, "", "book.md")
+	chapters := chaptersForPlan(plan, "Example Book", "book.md")
 	if len(chapters) != 2 {
 		t.Fatalf("chapter count = %d, want 2: %#v", len(chapters), chapters)
 	}
-	if chapters[0].StartIndex != 0 || chapters[0].Title != "Part I / Chapter 1" || chapters[1].StartIndex != 2 || chapters[1].StartSeq != 2 {
+	if chapters[0].StartIndex != 0 || chapters[0].Title != "Part I  ›  Chapter 1" || chapters[1].Title != "Part I  ›  Chapter 2" || chapters[1].StartIndex != 2 || chapters[1].StartSeq != 2 {
 		t.Fatalf("chapter starts = %#v", chapters)
+	}
+	if strings.Contains(chapters[0].Title, "Example Book") {
+		t.Fatalf("chapter title repeats the book title: %q", chapters[0].Title)
 	}
 	if got := chapterIndexAt(chapters, 2); got != 1 {
 		t.Fatalf("resume point mapped to chapter %d, want 1", got)

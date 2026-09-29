@@ -81,10 +81,10 @@ func NewPicker(title string, chapters []Chapter, resume *StartPoint) Model {
 		point.Resume = true
 		choices = append(choices, point)
 	}
-	choices = append(choices, StartPoint{Label: "Read the full book from the beginning", ChapterIndex: 0})
+	choices = append(choices, StartPoint{Label: "Start from the beginning", ChapterIndex: 0})
 	for index, chapter := range chapters {
 		choices = append(choices, StartPoint{
-			Label:        "Start at " + chapter.Title,
+			Label:        chapter.Title,
 			StartIndex:   chapter.StartIndex,
 			StartSeq:     chapter.StartSeq,
 			ChapterIndex: index,
@@ -179,100 +179,7 @@ func (m *Model) HandleKey(key string) (Action, bool) {
 }
 
 func (m Model) View() string {
-	if m.width < 20 {
-		return "Terminal too small for the Listen player. Resize it or press q to stop."
-	}
-	if m.phase == PhaseSelect {
-		return m.selectionView()
-	}
-	return m.playerView()
-}
-
-func (m Model) selectionView() string {
-	lines := []string{
-		"LISTEN  /  CHOOSE WHERE TO START",
-		clip("Book: "+m.title, m.width),
-		"",
-		"Choose a starting point. Reading continues through the rest of the book.",
-		"",
-	}
-	visible := m.height - len(lines) - 3
-	if visible < 1 {
-		visible = 1
-	}
-	start := 0
-	if m.cursor >= visible {
-		start = m.cursor - visible + 1
-	}
-	end := min(len(m.choices), start+visible)
-	for index := start; index < end; index++ {
-		prefix := "  "
-		if index == m.cursor {
-			prefix = "> "
-		}
-		lines = append(lines, clip(prefix+m.choices[index].Label, m.width))
-	}
-	lines = append(lines, "", "Up/Down or j/k select  Enter start  q cancel")
-	return strings.Join(lines, "\n")
-}
-
-func (m Model) playerView() string {
-	chapterTitle := "Full document"
-	chapterNumber := 0
-	chapterCount := len(m.chapters)
-	if len(m.chapters) > 0 {
-		chapterNumber = m.state.ChapterIndex + 1
-		if chapterNumber < 1 {
-			chapterNumber = 1
-		}
-		if chapterNumber > len(m.chapters) {
-			chapterNumber = len(m.chapters)
-		}
-		chapterTitle = m.chapters[chapterNumber-1].Title
-	}
-	progress := progressBar(m.state.Ready, m.state.Total, max(10, m.width-12))
-	status := m.state.Status
-	if m.state.Paused {
-		status = "Paused"
-	}
-	lines := []string{
-		"LISTEN  /  NOW PLAYING",
-		clip(m.title, m.width),
-		"",
-		clip(chapterLabel(chapterNumber, chapterCount)+": "+chapterTitle, m.width),
-		clip(status, m.width),
-		progress,
-		fmt.Sprintf("Audio ready: %d/%d segments", clamp(m.state.Ready, 0, max(0, m.state.Total)), m.state.Total),
-	}
-	if m.state.PlaybackKnown {
-		bookTotal := m.state.BookTotal
-		if bookTotal <= 0 {
-			bookTotal = m.state.Total
-		}
-		if bookTotal > 0 {
-			lines = append(lines, fmt.Sprintf("Segment %d of %d", m.state.Sequence+1, bookTotal))
-		}
-		if m.state.Duration > 0 {
-			lines = append(lines, fmt.Sprintf("Position in segment: %s / %s", clock(m.state.Position), clock(m.state.Duration)))
-		} else {
-			lines = append(lines, "Position in segment: "+clock(m.state.Position))
-		}
-	}
-	lines = append(lines, "", "Space pause/resume   Left/Right or p/n chapter   q stop")
-	if m.height > 0 && len(lines) > m.height {
-		lines = lines[:m.height]
-	}
-	for index := range lines {
-		lines[index] = clip(lines[index], m.width)
-	}
-	return strings.Join(lines, "\n")
-}
-
-func chapterLabel(number, count int) string {
-	if count <= 1 {
-		return "Reading"
-	}
-	return fmt.Sprintf("Chapter %d of %d", number, count)
+	return newTeaModel(m, nil, nil).View()
 }
 
 func progressBar(ready, total, width int) string {

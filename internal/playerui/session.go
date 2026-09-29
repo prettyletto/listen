@@ -6,31 +6,24 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 var ErrCancelled = errors.New("chapter selection cancelled")
 
 type Session struct {
-	input   *os.File
-	output  io.Writer
-	restore func() error
-	model   Model
-
+	program *tea.Program
 	actions chan Action
-	updates chan sessionUpdate
-	stop    chan struct{}
+	ready   chan struct{}
 	done    chan struct{}
 	close   sync.Once
+	errMu   sync.Mutex
+	err     error
 	stateMu sync.Mutex
 	state   State
-}
-
-type sessionUpdate struct {
-	state State
-	phase Phase
 }
 
 func Interactive(input io.Reader, output io.Writer) bool {
@@ -62,7 +55,7 @@ func ChooseStart(ctx context.Context, input io.Reader, output io.Writer, model M
 				return StartPoint{}, ErrCancelled
 			}
 		case <-session.done:
-			return StartPoint{}, errors.New("chapter selector stopped unexpectedly")
+			return StartPoint{}, session.runError("chapter selector stopped unexpectedly")
 		case <-ctx.Done():
 			return StartPoint{}, ctx.Err()
 		}
@@ -78,23 +71,31 @@ func StartPlayback(input io.Reader, output io.Writer, model Model) (*Session, er
 }
 
 func newSession(input *os.File, output io.Writer, model Model) (*Session, error) {
-	restore, err := enterTerminal(int(input.Fd()))
-	if err != nil {
-		return nil, fmt.Errorf("prepare terminal for playback controls: %w", err)
+	if output == nil {
+		return nil, errors.New("interactive playback requires an output stream")
 	}
 	s := &Session{
-		input: input, output: output, restore: restore, model: model,
-		actions: make(chan Action, 8), updates: make(chan sessionUpdate, 1),
-		stop: make(chan struct{}), done: make(chan struct{}), state: model.state,
+		actions: make(chan Action, 8),
+		ready:   make(chan struct{}),
+		done:    make(chan struct{}),
+		state:   model.state,
 	}
-	if _, err := io.WriteString(output, "\x1b[?1049h\x1b[?25l"); err != nil {
-		_ = restore()
-		return nil, fmt.Errorf("open player screen: %w", err)
+	ui := newTeaModel(model, s.actions, s.ready)
+	ui.done = s.done
+	s.program = tea.NewProgram(ui, tea.WithInput(input), tea.WithOutput(output), tea.WithAltScreen(), tea.WithoutSignalHandler())
+	go func() {
+		_, err := s.program.Run()
+		s.errMu.Lock()
+		s.err = err
+		s.errMu.Unlock()
+		close(s.done)
+	}()
+	select {
+	case <-s.ready:
+		return s, nil
+	case <-s.done:
+		return nil, s.runError("start the interactive screen")
 	}
-	s.resize()
-	s.render()
-	go s.run()
-	return s, nil
 }
 
 func (s *Session) Actions() <-chan Action { return s.actions }
@@ -136,79 +137,33 @@ func (s *Session) SetFinished(status string) {
 }
 
 func (s *Session) mutate(change func(*State), phase Phase) {
+	if s == nil || s.program == nil {
+		return
+	}
 	s.stateMu.Lock()
+	select {
+	case <-s.done:
+		s.stateMu.Unlock()
+		return
+	default:
+	}
 	change(&s.state)
 	update := sessionUpdate{state: s.state, phase: phase}
-	select {
-	case s.updates <- update:
-	default:
-		select {
-		case <-s.updates:
-		default:
-		}
-		select {
-		case s.updates <- update:
-		default:
-		}
-	}
 	s.stateMu.Unlock()
+	s.program.Send(update)
 }
 
-func (s *Session) run() {
-	keys := make(chan string, 16)
-	keysDone := make(chan struct{})
-	go func() {
-		defer close(keysDone)
-		pollKeys(int(s.input.Fd()), keys, s.stop)
-	}()
-	defer func() {
-		<-keysDone
-		close(s.done)
-	}()
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-s.stop:
-			return
-		case update := <-s.updates:
-			s.model.SetState(update.state)
-			if update.phase != 0 {
-				s.model.SetPhase(update.phase)
-			}
-			s.resize()
-			s.render()
-		case key := <-keys:
-			action, ok := s.model.HandleKey(key)
-			if ok {
-				select {
-				case s.actions <- action:
-				default:
-				}
-			}
-			s.render()
-		case <-ticker.C:
-			if s.resize() {
-				s.render()
-			}
-		}
+func (s *Session) runError(prefix string) error {
+	if s == nil {
+		return errors.New(prefix)
 	}
-}
-
-func (s *Session) resize() bool {
-	width, height, err := terminalSize(int(s.input.Fd()))
+	s.errMu.Lock()
+	err := s.err
+	s.errMu.Unlock()
 	if err == nil {
-		oldWidth, oldHeight := s.model.Size()
-		s.model.SetSize(width, height)
-		return oldWidth != width || oldHeight != height
+		return errors.New(prefix)
 	}
-	return false
-}
-
-func (s *Session) render() {
-	view := s.model.View()
-	view = "\x1b[H\x1b[2J" + view
-	_, _ = io.WriteString(s.output, carriageReturns(view))
+	return fmt.Errorf("%s: %w", prefix, err)
 }
 
 func (s *Session) Close() {
@@ -216,20 +171,11 @@ func (s *Session) Close() {
 		return
 	}
 	s.close.Do(func() {
-		close(s.stop)
-		<-s.done
-		_, _ = io.WriteString(s.output, "\x1b[?25h\x1b[?1049l")
-		_ = s.restore()
-	})
-}
-
-func carriageReturns(value string) string {
-	result := make([]byte, 0, len(value)+strings.Count(value, "\n"))
-	for index := 0; index < len(value); index++ {
-		if value[index] == '\n' {
-			result = append(result, '\r')
+		select {
+		case <-s.done:
+		default:
+			s.program.Quit()
 		}
-		result = append(result, value[index])
-	}
-	return string(result)
+		<-s.done
+	})
 }

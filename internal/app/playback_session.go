@@ -58,9 +58,13 @@ func chaptersForPlan(plan segment.Plan, title, sourceName string) []playerui.Cha
 		if index > 0 && id == previousID {
 			continue
 		}
-		label := strings.Join(item.SectionPath, " / ")
+		sectionPath := item.SectionPath
+		if len(sectionPath) > 0 && strings.EqualFold(strings.TrimSpace(sectionPath[0]), strings.TrimSpace(title)) {
+			sectionPath = sectionPath[1:]
+		}
+		label := strings.Join(sectionPath, "  ›  ")
 		if label == "" {
-			label = title
+			label = "Opening"
 		}
 		chapters = append(chapters, playerui.Chapter{
 			ID: id, Title: label, StartIndex: index, StartSeq: item.Seq,

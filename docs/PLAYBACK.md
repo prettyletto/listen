@@ -10,8 +10,10 @@ reads the whole book from its beginning when there is no unfinished session.
 With an unfinished session, the picker defaults to the saved position. It also
 offers the full book and each playable chapter or major section. Choosing a
 chapter starts at its first segment and continues through the rest of the
-document. Non-interactive runs use the saved position when available, or start
-at the beginning.
+document. The book title is shown once above concise chapter names. Use
+`Up`/`Down` or `j`/`k` to move, `/` to search chapter names, `Enter` to choose,
+and `Esc` to clear an active search. Non-interactive runs use the saved
+position when available, or start at the beginning.
 
 During playback, Listen owns the terminal controls while mpv plays audio over
 JSON IPC:
