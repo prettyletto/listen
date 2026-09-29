@@ -19,15 +19,23 @@ During playback, Listen owns the terminal controls while mpv plays audio over
 JSON IPC:
 
 - `Space`: pause or resume;
-- `Left` / `p`: previous chapter or major section;
-- `Right` / `n`: next chapter or major section;
+- `Left` / `Right`: seek backward or forward by five seconds;
+- `p` / `n`: previous or next chapter or major section;
 - `q` or `Ctrl-C`: stop and save the current position.
 
-The player screen shows the current chapter, current segment and offset, audio
-readiness, and the available controls. Chapter navigation checkpoints the
-current position, cancels the active translation/speech stream, and starts a
-new stream at the selected boundary. Completed translations and audio remain
-cached and are reused. Every new stream still commits segments in sequence.
+The player screen shows playback progress within the current passage, the
+passage number, how much audio is ready, and the available controls. A seek
+into audio that has not been generated yet pauses playback and shows a
+buffering message. Listen retries the seek as ordered audio becomes ready,
+then resumes if playback was running before the seek. If playback was already
+paused, it stays paused. A seek past the end of a completed stream leaves the
+current position unchanged and explains why it could not move farther.
+
+Chapter navigation checkpoints the current position, cancels the active
+translation/speech stream, and starts a new stream at the selected boundary.
+Teardown errors from the replaced stream are ignored so they do not appear as
+source failures. Completed translations and audio remain cached and are reused.
+Every new stream still commits segments in sequence.
 
 ## Streaming playlist
 

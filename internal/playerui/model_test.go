@@ -52,7 +52,7 @@ func TestPlayerKeysControlChaptersPauseAndStop(t *testing.T) {
 	for _, test := range []struct {
 		key  string
 		want ActionKind
-	}{{"left", ActionPrevious}, {"p", ActionPrevious}, {"right", ActionNext}, {"n", ActionNext}, {"space", ActionTogglePause}, {"q", ActionStop}} {
+	}{{"left", ActionSeekBackward}, {"right", ActionSeekForward}, {"p", ActionPrevious}, {"n", ActionNext}, {"space", ActionTogglePause}, {"q", ActionStop}} {
 		action, ok := model.HandleKey(test.key)
 		if !ok || action.Kind != test.want {
 			t.Errorf("key %q = %#v, active=%v; want action %d", test.key, action, ok, test.want)
@@ -158,8 +158,10 @@ func TestBubbleTeaPlayerMapsSpaceAndChapterKeys(t *testing.T) {
 		want ActionKind
 	}{
 		{msg: tea.KeyMsg{Type: tea.KeySpace}, want: ActionTogglePause},
-		{msg: tea.KeyMsg{Type: tea.KeyRight}, want: ActionNext},
-		{msg: tea.KeyMsg{Type: tea.KeyLeft}, want: ActionPrevious},
+		{msg: tea.KeyMsg{Type: tea.KeyRight}, want: ActionSeekForward},
+		{msg: tea.KeyMsg{Type: tea.KeyLeft}, want: ActionSeekBackward},
+		{msg: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}, want: ActionNext},
+		{msg: tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}}, want: ActionPrevious},
 	} {
 		_, cmd := model.Update(test.msg)
 		if cmd == nil {
@@ -169,6 +171,22 @@ func TestBubbleTeaPlayerMapsSpaceAndChapterKeys(t *testing.T) {
 		action := <-actions
 		if action.Kind != test.want {
 			t.Errorf("key %q action = %d, want %d", test.msg.String(), action.Kind, test.want)
+		}
+	}
+}
+
+func TestPlayerShowsStyledTimelineAndPendingSeekFeedback(t *testing.T) {
+	model := NewPlayer("Example Book", []Chapter{{Title: "Opening"}}, 0, 10)
+	model.SetPhase(PhasePlaying)
+	model.SetState(State{
+		Status: "Playing", Ready: 3, Total: 10, Sequence: 0,
+		Position: 5 * time.Second, Duration: 20 * time.Second,
+		Paused: true, SeekPending: 5 * time.Second, PlaybackKnown: true,
+	})
+	view := model.View()
+	for _, expected := range []string{"Buffering +00:05", "+00:05", "00:05", "00:20", "AUDIO READY 3/10", "PASSAGE  1 / 10", "←/→ seek 5s"} {
+		if !strings.Contains(view, expected) {
+			t.Errorf("player view is missing %q:\n%s", expected, view)
 		}
 	}
 }
@@ -197,6 +215,9 @@ func TestViewsFitResponsiveTerminalWidthsAndHeights(t *testing.T) {
 			name string
 			text string
 		}{{"picker", picker.View()}, {"filtered picker", filteredPicker.View()}, {"player", player.View()}} {
+			if view.name == "player" && size.width == 40 && size.height == 14 && !strings.Contains(view.text, "AUDIO READY") {
+				t.Errorf("player at %dx%d hides streaming readiness feedback:\n%s", size.width, size.height, view.text)
+			}
 			if view.name == "filtered picker" && size.width == 32 && !strings.Contains(view.text, "q cancel") {
 				t.Errorf("filtered picker at %dx%d hides the cancel key:\n%s", size.width, size.height, view.text)
 			}

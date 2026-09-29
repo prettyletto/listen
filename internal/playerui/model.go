@@ -32,6 +32,8 @@ const (
 	ActionPrevious
 	ActionNext
 	ActionTogglePause
+	ActionSeekBackward
+	ActionSeekForward
 	ActionStop
 )
 
@@ -59,6 +61,7 @@ type State struct {
 	Duration      time.Duration
 	ChapterIndex  int
 	Paused        bool
+	SeekPending   time.Duration
 	PlaybackKnown bool
 }
 
@@ -170,9 +173,13 @@ func (m *Model) HandleKey(key string) (Action, bool) {
 	switch key {
 	case "space":
 		return Action{Kind: ActionTogglePause}, true
-	case "left", "p", "h":
+	case "left":
+		return Action{Kind: ActionSeekBackward}, true
+	case "right":
+		return Action{Kind: ActionSeekForward}, true
+	case "p", "h":
 		return Action{Kind: ActionPrevious}, true
-	case "right", "n", "l":
+	case "n", "l":
 		return Action{Kind: ActionNext}, true
 	}
 	return Action{}, false
@@ -180,18 +187,6 @@ func (m *Model) HandleKey(key string) (Action, bool) {
 
 func (m Model) View() string {
 	return newTeaModel(m, nil, nil).View()
-}
-
-func progressBar(ready, total, width int) string {
-	if width < 4 {
-		width = 4
-	}
-	if total < 1 {
-		total = 1
-	}
-	ready = clamp(ready, 0, total)
-	filled := ready * width / total
-	return "[" + strings.Repeat("#", filled) + strings.Repeat("-", width-filled) + "]"
 }
 
 func clock(value time.Duration) string {

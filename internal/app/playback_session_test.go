@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -58,6 +59,11 @@ func TestPlaybackNextChapterCancelsCurrentStreamAndRestartsAtChapterBoundary(t *
 		newPlayer: func(playback.MPVOptions) playback.Player {
 			count++
 			player := &navigationTestPlayer{id: count, appended: appended}
+			if count == 1 {
+				player.blockAppend = true
+				player.blockSequence = 1
+				player.blockStarted = make(chan struct{})
+			}
 			players <- player
 			return player
 		},
@@ -92,6 +98,11 @@ func TestPlaybackNextChapterCancelsCurrentStreamAndRestartsAtChapterBoundary(t *
 		}
 	case <-time.After(time.Second):
 		t.Fatal("first chapter did not enqueue its first segment")
+	}
+	select {
+	case <-first.blockStarted:
+	case <-time.After(time.Second):
+		t.Fatal("cancellable player append did not start before chapter navigation")
 	}
 	screen.actions <- playerui.Action{Kind: playerui.ActionNext}
 	deadline := time.After(2 * time.Second)
@@ -132,21 +143,235 @@ secondChapterQueued:
 	}
 }
 
+func TestPlaybackWaitsForReadyAudioBeforeSeekingAndResumes(t *testing.T) {
+	plan := segment.Plan{DocumentID: "book", Segments: []segment.Segment{
+		{ID: "one", Seq: 0, MajorUnitID: "chapter-1", SectionPath: []string{"Chapter 1"}},
+		{ID: "two", Seq: 1, MajorUnitID: "chapter-1", SectionPath: []string{"Chapter 1"}},
+		{ID: "three", Seq: 2, MajorUnitID: "chapter-1", SectionPath: []string{"Chapter 1"}},
+	}}
+	chapters := chaptersForPlan(plan, "Example Book", "book.md")
+	screen := &fakePlayerScreen{
+		actions: make(chan playerui.Action, 2), started: make(chan struct{}, 1),
+		seekPending: make(chan time.Duration, 4), pauseStates: make(chan bool, 4),
+		positions: make(chan playback.Position, 8),
+	}
+	playerReady := make(chan *bufferedSeekTestPlayer, 1)
+	deps := runtimeDeps{
+		interactivePlayback: func(io.Reader, io.Writer) bool { return true },
+		startPlaybackScreen: func(io.Reader, io.Writer, playerui.Model) (playerScreen, error) { return screen, nil },
+		newPlayer: func(playback.MPVOptions) playback.Player {
+			player := &bufferedSeekTestPlayer{
+				appended: make(chan playback.Item, 4), seekDeadlines: make(chan time.Time, 4),
+			}
+			playerReady <- player
+			return player
+		},
+	}
+	synth := &testkit.FakeSynthesizer{
+		Duration:   3 * time.Second,
+		DelayBySeq: map[uint64]time.Duration{1: 1200 * time.Millisecond, 2: 10 * time.Second},
+	}
+	result := make(chan struct {
+		stopped bool
+		err     error
+	}, 1)
+	go func() {
+		_, stopped, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
+			listenOptions{playbackSpeed: 1}, "Example Book", plan,
+			playerui.StartPoint{StartIndex: 0, StartSeq: 0, ChapterIndex: 0}, chapters,
+			synth, nil, pipeline.StreamOptions{Workers: 1, StartupBuffer: time.Nanosecond}, nil, session.State{}, nil)
+		result <- struct {
+			stopped bool
+			err     error
+		}{stopped: stopped, err: err}
+	}()
+
+	awaitSignal(t, screen.started, "playback start")
+	player := <-playerReady
+	awaitItem(t, player.appended, 0)
+	screen.actions <- playerui.Action{Kind: playerui.ActionSeekForward}
+	select {
+	case deadline := <-player.seekDeadlines:
+		remaining := time.Until(deadline)
+		if remaining <= 0 || remaining > playerActionTimeout {
+			t.Fatalf("direct seek timeout remaining = %s, want at most %s", remaining, playerActionTimeout)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("seek did not use a bounded player operation context")
+	}
+	awaitSignalValue(t, screen.pauseStates, true, "player pauses while the seek target is generated")
+	awaitSignalValue(t, screen.seekPending, 5*time.Second, "five-second seek buffering feedback")
+	awaitPosition(t, screen.positions, playback.Position{Seq: 1, Offset: 2 * time.Second, Duration: 3 * time.Second})
+	awaitSignalValue(t, screen.pauseStates, false, "player resumes after the target becomes ready")
+	if paused := player.isPaused(); paused {
+		t.Fatal("player remained paused after its buffered seek completed")
+	}
+
+	screen.actions <- playerui.Action{Kind: playerui.ActionStop}
+	select {
+	case got := <-result:
+		if got.err != nil || !got.stopped {
+			t.Fatalf("stop outcome = stopped:%v err:%v", got.stopped, got.err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("stopping after buffered seek did not cancel playback")
+	}
+}
+
+func awaitSignal(t *testing.T, signal <-chan struct{}, description string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for %s", description)
+	}
+}
+
+func awaitItem(t *testing.T, items <-chan playback.Item, sequence uint64) {
+	t.Helper()
+	select {
+	case item := <-items:
+		if item.Seq != sequence {
+			t.Fatalf("queued sequence = %d, want %d", item.Seq, sequence)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for queued sequence %d", sequence)
+	}
+}
+
+func awaitSignalValue[T comparable](t *testing.T, values <-chan T, expected T, description string) {
+	t.Helper()
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case got := <-values:
+			if got == expected {
+				return
+			}
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for %s", description)
+		}
+	}
+}
+
+func awaitPosition(t *testing.T, positions <-chan playback.Position, expected playback.Position) {
+	t.Helper()
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case got := <-positions:
+			if got.Seq == expected.Seq && got.Offset == expected.Offset && got.Duration == expected.Duration {
+				return
+			}
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for seek position %#v", expected)
+		}
+	}
+}
+
 type appendedSegment struct {
 	player int
 	seq    uint64
 }
 
+type bufferedSeekTestPlayer struct {
+	mu            sync.Mutex
+	items         []playback.Item
+	current       playback.Position
+	paused        bool
+	appended      chan playback.Item
+	seekDeadlines chan time.Time
+}
+
+func (*bufferedSeekTestPlayer) Start(context.Context) error { return nil }
+
+func (p *bufferedSeekTestPlayer) Append(ctx context.Context, item playback.Item) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	p.mu.Lock()
+	p.items = append(p.items, item)
+	if len(p.items) == 1 {
+		p.current = playback.Position{Seq: item.Seq, Duration: item.Duration}
+	}
+	p.mu.Unlock()
+	select {
+	case p.appended <- item:
+	default:
+	}
+	return nil
+}
+
+func (p *bufferedSeekTestPlayer) Position(context.Context) (uint64, time.Duration, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.current.Seq, p.current.Offset, nil
+}
+
+func (p *bufferedSeekTestPlayer) CurrentDuration(context.Context) (time.Duration, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.current.Duration, nil
+}
+
+func (p *bufferedSeekTestPlayer) SeekBy(ctx context.Context, delta time.Duration) (playback.Position, error) {
+	if err := ctx.Err(); err != nil {
+		return playback.Position{}, err
+	}
+	if deadline, ok := ctx.Deadline(); ok && p.seekDeadlines != nil {
+		select {
+		case p.seekDeadlines <- deadline:
+		default:
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.items) < 2 {
+		return playback.Position{}, playback.ErrSeekNotBuffered
+	}
+	p.current = playback.Position{Seq: 1, Offset: 2 * time.Second, Duration: 3 * time.Second}
+	return p.current, nil
+}
+
+func (p *bufferedSeekTestPlayer) SetPaused(ctx context.Context, paused bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	p.mu.Lock()
+	p.paused = paused
+	p.mu.Unlock()
+	return nil
+}
+
+func (*bufferedSeekTestPlayer) Wait(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }
+func (*bufferedSeekTestPlayer) Close() error                   { return nil }
+
+func (p *bufferedSeekTestPlayer) isPaused() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.paused
+}
+
 type navigationTestPlayer struct {
-	id       int
-	appended chan<- appendedSegment
-	mu       sync.Mutex
-	closed   int
+	id            int
+	appended      chan<- appendedSegment
+	blockAppend   bool
+	blockSequence uint64
+	blockStarted  chan struct{}
+	mu            sync.Mutex
+	closed        int
 }
 
 func (*navigationTestPlayer) Start(context.Context) error { return nil }
 
 func (p *navigationTestPlayer) Append(ctx context.Context, item playback.Item) error {
+	if p.blockAppend && item.Seq == p.blockSequence {
+		close(p.blockStarted)
+		<-ctx.Done()
+		return errors.New("mpv IPC transport closed while the old chapter was replaced")
+	}
 	select {
 	case p.appended <- appendedSegment{player: p.id, seq: item.Seq}:
 		return nil
@@ -175,18 +400,37 @@ func (p *navigationTestPlayer) closeCalls() int {
 }
 
 type fakePlayerScreen struct {
-	actions chan playerui.Action
-	started chan struct{}
+	actions     chan playerui.Action
+	started     chan struct{}
+	seekPending chan time.Duration
+	pauseStates chan bool
+	positions   chan playback.Position
 }
 
-func (s *fakePlayerScreen) Actions() <-chan playerui.Action                { return s.actions }
-func (*fakePlayerScreen) SetStatus(string)                                 {}
-func (*fakePlayerScreen) SetProgress(int, int)                             {}
-func (*fakePlayerScreen) SetChapter(int)                                   {}
-func (*fakePlayerScreen) SetPaused(bool)                                   {}
-func (s *fakePlayerScreen) SetPlaybackStarted()                            { s.started <- struct{}{} }
-func (*fakePlayerScreen) SetPosition(uint64, time.Duration, time.Duration) {}
-func (*fakePlayerScreen) SetFinished(string)                               {}
-func (*fakePlayerScreen) Close()                                           {}
+func (s *fakePlayerScreen) Actions() <-chan playerui.Action { return s.actions }
+func (*fakePlayerScreen) SetStatus(string)                  {}
+func (*fakePlayerScreen) SetProgress(int, int)              {}
+func (*fakePlayerScreen) SetChapter(int)                    {}
+func (s *fakePlayerScreen) SetPaused(paused bool) {
+	select {
+	case s.pauseStates <- paused:
+	default:
+	}
+}
+func (s *fakePlayerScreen) SetSeekPending(delta time.Duration) {
+	select {
+	case s.seekPending <- delta:
+	default:
+	}
+}
+func (s *fakePlayerScreen) SetPlaybackStarted() { s.started <- struct{}{} }
+func (s *fakePlayerScreen) SetPosition(sequence uint64, offset, duration time.Duration) {
+	select {
+	case s.positions <- playback.Position{Seq: sequence, Offset: offset, Duration: duration}:
+	default:
+	}
+}
+func (*fakePlayerScreen) SetFinished(string) {}
+func (*fakePlayerScreen) Close()             {}
 
 var _ playerScreen = (*fakePlayerScreen)(nil)

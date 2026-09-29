@@ -2,8 +2,11 @@ package playback
 
 import (
 	"context"
+	"errors"
 	"time"
 )
+
+var ErrSeekNotBuffered = errors.New("seek target audio is not ready yet")
 
 type Item struct {
 	Seq      uint64
@@ -23,6 +26,18 @@ type Player interface {
 // Seeker resumes playback within the current queue item.
 type Seeker interface {
 	Seek(context.Context, time.Duration) error
+}
+
+type Position struct {
+	Seq      uint64
+	Offset   time.Duration
+	Duration time.Duration
+}
+
+// BufferedSeeker moves along the audio files currently queued for playback.
+// ErrSeekNotBuffered means synthesis has not queued the requested target yet.
+type BufferedSeeker interface {
+	SeekBy(context.Context, time.Duration) (Position, error)
 }
 
 // OffsetAppender queues the first item at an offset as it is loaded. This

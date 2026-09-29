@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -341,18 +342,26 @@ func centerBlock(terminalWidth int, value string) string {
 }
 
 var (
-	eyebrowStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1")).Bold(true)
-	titleStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#F0F4FA")).Bold(true)
-	mutedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#AAB5C8"))
-	footerStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#B7C2D5"))
-	separatorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#344155"))
-	rowStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#CDD5E3"))
-	selectedRowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F5FAFF")).Background(lipgloss.Color("#263A4E")).Bold(true).PaddingLeft(1)
+	eyebrowStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1")).Bold(true)
+	titleStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#F0F4FA")).Bold(true)
+	mutedStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#AAB5C8"))
+	footerStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#B7C2D5"))
+	separatorStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#344155"))
+	rowStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("#CDD5E3"))
+	selectedRowStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#F5FAFF")).Background(lipgloss.Color("#263A4E")).Bold(true).PaddingLeft(1)
+	bufferActiveStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1"))
+	bufferTrackStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#344155"))
+	timelineActiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1")).Bold(true)
+	timelineKnobStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#F0F4FA")).Bold(true)
+	playerFrameStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#344155")).Padding(1, 2)
 )
 
 func renderPlayer(screen Model) string {
-	width := min(screen.width, 104)
-	innerWidth := max(1, width-4)
+	framed := screen.width >= 64 && screen.height >= 22
+	innerWidth := max(1, min(screen.width, 104)-4)
+	if framed {
+		innerWidth = max(1, min(98, screen.width-6))
+	}
 	compact := screen.height < 18 || screen.width < 48
 	tight := screen.height < 14
 	chapterTitle, chapterNumber := currentChapter(screen)
@@ -360,38 +369,36 @@ func renderPlayer(screen Model) string {
 	chapterLine := eyebrowStyle.Render(clip(chapterLabel(chapterNumber, len(screen.chapters)), innerWidth))
 	chapterHeading := titleStyle.Width(innerWidth).Render(clip(chapterTitle, innerWidth))
 	status := screen.state.Status
-	if screen.state.Paused {
+	if screen.state.SeekPending != 0 {
+		status = "Buffering " + signedSeek(screen.state.SeekPending)
+	} else if status == "" && screen.state.Paused {
 		status = "Paused"
 	}
 	if status == "" {
-		status = "Preparing audio"
+		status = "Preparing opening audio"
 	}
-	statusLine := statusStyle(status).Render(clip(status, innerWidth))
-	progressWidth := max(8, min(36, innerWidth-12))
-	progress := progressBar(screen.state.Ready, screen.state.Total, progressWidth)
-	progressLine := progressStyle.Render(progress)
-	readyLine := mutedStyle.Render(clip(fmt.Sprintf("Audio ready  %d of %d passages", clamp(screen.state.Ready, 0, max(0, screen.state.Total)), max(0, screen.state.Total)), innerWidth))
-	if screen.state.Total <= 0 {
-		readyLine = mutedStyle.Render(clip("Preparing your audio", innerWidth))
+	statusLine := statusStyle(status).Padding(0, 1).Render(clip("● "+status, max(1, innerWidth-2)))
+	readyLine := readinessLine(screen.state, innerWidth)
+	progressLine := readyLine
+	if screen.state.PlaybackKnown {
+		progressLine = timelineLine(screen.state, innerWidth)
 	}
-	positionLines := make([]string, 0, 2)
+	positionLine := ""
 	if screen.state.PlaybackKnown {
 		bookTotal := screen.state.BookTotal
 		if bookTotal <= 0 {
 			bookTotal = screen.state.Total
 		}
 		if bookTotal > 0 {
-			positionLines = append(positionLines, mutedStyle.Render(clip(fmt.Sprintf("Passage %d of %d", screen.state.Sequence+1, bookTotal), innerWidth)))
-		}
-		if screen.state.Duration > 0 {
-			positionLines = append(positionLines, mutedStyle.Render(clip(fmt.Sprintf("Current passage  %s / %s", clock(screen.state.Position), clock(screen.state.Duration)), innerWidth)))
-		} else {
-			positionLines = append(positionLines, mutedStyle.Render(clip("Current passage  "+clock(screen.state.Position), innerWidth)))
+			positionLine = mutedStyle.Render(clip(fmt.Sprintf("PASSAGE  %d / %d", screen.state.Sequence+1, bookTotal), innerWidth))
 		}
 	}
-	help := footerStyle.Width(innerWidth).Render(clip("Space pause/resume   ←/→ or p/n chapter   q stop", innerWidth))
+	helpLines := []string{footerStyle.Width(innerWidth).Render(clip("←/→ seek 5s   p/n chapter   Space pause   q stop", innerWidth))}
 	if innerWidth < 52 {
-		help = footerStyle.Width(innerWidth).Render(clip("Space pause · ←/→ chapter · q stop", innerWidth))
+		helpLines = []string{
+			footerStyle.Width(innerWidth).Render(clip("←/→ seek ±5s · p/n chapter", innerWidth)),
+			footerStyle.Width(innerWidth).Render(clip("Space pause · q stop", innerWidth)),
+		}
 	}
 	sections := []string{
 		eyebrowStyle.Render("LISTEN  /  NOW PLAYING"),
@@ -409,16 +416,76 @@ func renderPlayer(screen Model) string {
 		sections = append(sections, lipgloss.NewStyle().Height(1).Render(""))
 	}
 	sections = append(sections, progressLine)
-	if !tight {
+	if screen.state.PlaybackKnown && (!tight || screen.height >= 12) {
 		sections = append(sections, readyLine)
-		sections = append(sections, positionLines...)
+		if !tight && positionLine != "" {
+			sections = append(sections, positionLine)
+		}
 	}
 	if !compact {
 		sections = append(sections, lipgloss.NewStyle().Height(1).Render(""))
 	}
-	sections = append(sections, separatorStyle.Render(strings.Repeat("─", innerWidth)), help)
+	sections = append(sections, separatorStyle.Render(strings.Repeat("─", innerWidth)))
+	sections = append(sections, helpLines...)
 	body := lipgloss.JoinVertical(lipgloss.Left, sections...)
+	if framed {
+		body = playerFrameStyle.Render(body)
+		return lipgloss.Place(screen.width, screen.height, lipgloss.Center, lipgloss.Center, body)
+	}
 	return centerBlock(screen.width, body)
+}
+
+func readinessLine(state State, width int) string {
+	total := max(0, state.Total)
+	ready := clamp(state.Ready, 0, total)
+	label := fmt.Sprintf("AUDIO READY %d/%d", ready, total)
+	barWidth := max(4, min(32, width-lipgloss.Width(label)-1))
+	return lipgloss.JoinHorizontal(lipgloss.Left, mutedStyle.Render(label+" "), readinessBar(ready, total, barWidth))
+}
+
+func readinessBar(ready, total, width int) string {
+	width = max(1, width)
+	total = max(1, total)
+	filled := int(float64(width) * float64(clamp(ready, 0, total)) / float64(total))
+	return bufferActiveStyle.Render(strings.Repeat("━", filled)) + bufferTrackStyle.Render(strings.Repeat("─", width-filled))
+}
+
+func timelineLine(state State, width int) string {
+	if state.Duration <= 0 {
+		return mutedStyle.Render(clip("Starting playback clock…", width))
+	}
+	position := state.Position
+	if position < 0 {
+		position = 0
+	}
+	if position > state.Duration {
+		position = state.Duration
+	}
+	left, right := clock(position), clock(state.Duration)
+	barWidth := max(6, width-lipgloss.Width(left)-lipgloss.Width(right)-2)
+	return lipgloss.JoinHorizontal(lipgloss.Left, mutedStyle.Render(left+" "), timelineBar(position, state.Duration, barWidth), mutedStyle.Render(" "+right))
+}
+
+func timelineBar(position, duration time.Duration, width int) string {
+	width = max(6, width)
+	if duration <= 0 {
+		return bufferTrackStyle.Render(strings.Repeat("─", width))
+	}
+	if position < 0 {
+		position = 0
+	}
+	if position > duration {
+		position = duration
+	}
+	knob := int(float64(width-1) * float64(position) / float64(duration))
+	return timelineActiveStyle.Render(strings.Repeat("━", knob)) + timelineKnobStyle.Render("●") + bufferTrackStyle.Render(strings.Repeat("─", width-knob-1))
+}
+
+func signedSeek(delta time.Duration) string {
+	if delta > 0 {
+		return "+" + clock(delta)
+	}
+	return "−" + clock(-delta)
 }
 
 func currentChapter(screen Model) (string, int) {
@@ -438,15 +505,19 @@ func chapterLabel(number, count int) string {
 
 func statusStyle(status string) lipgloss.Style {
 	color := lipgloss.Color("#79D7C1")
-	if strings.Contains(strings.ToLower(status), "paus") {
+	background := lipgloss.Color("#19312E")
+	lower := strings.ToLower(status)
+	if strings.Contains(lower, "paus") || strings.Contains(lower, "buffer") || strings.Contains(lower, "wait") ||
+		strings.Contains(lower, "needed") || strings.Contains(lower, "end of ready audio") {
 		color = lipgloss.Color("#E5BB74")
-	} else if strings.Contains(strings.ToLower(status), "warning") || strings.Contains(strings.ToLower(status), "could not") {
+		background = lipgloss.Color("#3A3023")
+	} else if strings.Contains(lower, "warning") || strings.Contains(lower, "could not") ||
+		strings.Contains(lower, "did not") || strings.Contains(lower, "unavailable") || strings.Contains(lower, "failed") {
 		color = lipgloss.Color("#E5A383")
+		background = lipgloss.Color("#3A2624")
 	}
-	return lipgloss.NewStyle().Foreground(color).Bold(true)
+	return lipgloss.NewStyle().Foreground(color).Background(background).Bold(true)
 }
-
-var progressStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#79D7C1"))
 
 func (m *teaModel) renderForTest() string { return m.View() }
 

@@ -109,7 +109,10 @@ func (s *Session) SetProgress(ready, total int) {
 }
 
 func (s *Session) SetChapter(index int) {
-	s.mutate(func(state *State) { state.ChapterIndex = index }, 0)
+	s.mutate(func(state *State) {
+		state.ChapterIndex = index
+		state.SeekPending = 0
+	}, 0)
 }
 
 func (s *Session) SetPaused(paused bool) {
@@ -130,6 +133,10 @@ func (s *Session) SetPosition(sequence uint64, offset, duration time.Duration) {
 		state.Duration = duration
 		state.PlaybackKnown = true
 	}, 0)
+}
+
+func (s *Session) SetSeekPending(delta time.Duration) {
+	s.mutate(func(state *State) { state.SeekPending = delta }, 0)
 }
 
 func (s *Session) SetFinished(status string) {

@@ -63,9 +63,9 @@ In an interactive Linux terminal, `listen <book>` opens a start picker when
 the source has multiple playable chapters or major sections. Choose the full
 book from the beginning, an unfinished saved position, or a chapter/section.
 Starting at a chapter continues through the rest of the book. During playback,
-Space pauses/resumes, Left/Right or `p`/`n` changes chapter, and `q` or Ctrl-C
-stops and saves the position. Non-interactive runs do not prompt and keep the
-normal resume behavior.
+Space pauses/resumes, Left/Right seeks by five seconds, `p`/`n` changes chapter,
+and `q` or Ctrl-C stops and saves the position. Non-interactive runs do not
+prompt and keep the normal resume behavior.
 
 `--export [directory]` builds a reusable audiobook bundle without opening
 mpv. With no directory, `listen book.epub --export` writes `book-audio/` next

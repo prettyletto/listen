@@ -17,6 +17,8 @@ import (
 	"github.com/prettyletto/listen/internal/speech"
 )
 
+const playerActionTimeout = 750 * time.Millisecond
+
 type streamCompletion struct {
 	report pipeline.StreamReport
 	err    error
@@ -35,6 +37,7 @@ type playerScreen interface {
 	SetProgress(int, int)
 	SetChapter(int)
 	SetPaused(bool)
+	SetSeekPending(time.Duration)
 	SetPlaybackStarted()
 	SetPosition(uint64, time.Duration, time.Duration)
 	SetFinished(string)
@@ -264,6 +267,51 @@ func runPlaybackPass(
 		defer ticker.Stop()
 	}
 	paused := false
+	var pendingSeek time.Duration
+	resumeAfterSeek := false
+	setPendingSeek := func(delta time.Duration) {
+		pendingSeek = delta
+		if display != nil {
+			display.SetSeekPending(delta)
+		}
+	}
+	finishPendingSeek := func(status string) {
+		keepPaused := resumeAfterSeek
+		setPendingSeek(0)
+		resumeAfterSeek = false
+		if !keepPaused {
+			if pausable, ok := player.(playback.Pausable); ok {
+				if err := pausable.SetPaused(streamCtx, false); err != nil {
+					paused = true
+					if display != nil {
+						display.SetPaused(true)
+						display.SetStatus("Audio is ready, but playback did not resume")
+					}
+					return
+				}
+			}
+		}
+		paused = keepPaused
+		if display != nil {
+			display.SetPaused(paused)
+			display.SetStatus(status)
+		}
+	}
+	completePendingSeek := func(position playback.Position) {
+		if display != nil {
+			display.SetPosition(position.Seq, position.Offset, position.Duration)
+			chapter := chapterIndexForSequence(chapters, position.Seq)
+			if chapter != currentChapter {
+				currentChapter = chapter
+				display.SetChapter(chapter)
+			}
+		}
+		status := "Playing · seek complete"
+		if resumeAfterSeek {
+			status = "Paused after seeking"
+		}
+		finishPendingSeek(status)
+	}
 
 	for {
 		select {
@@ -294,6 +342,10 @@ func runPlaybackPass(
 		case action := <-actionChannel(display):
 			switch action.Kind {
 			case playerui.ActionTogglePause:
+				if pendingSeek != 0 {
+					setPendingSeek(0)
+					resumeAfterSeek = false
+				}
 				pausable, ok := player.(playback.Pausable)
 				if !ok {
 					display.SetStatus("Pause control is unavailable for this player")
@@ -306,6 +358,68 @@ func runPlaybackPass(
 					continue
 				}
 				display.SetPaused(paused)
+				display.SetStatus(map[bool]string{true: "Paused", false: "Playing"}[paused])
+			case playerui.ActionSeekBackward, playerui.ActionSeekForward:
+				delta := -5 * time.Second
+				if action.Kind == playerui.ActionSeekForward {
+					delta = 5 * time.Second
+				}
+				seeker, ok := player.(playback.BufferedSeeker)
+				if !ok {
+					display.SetStatus("Seeking is unavailable for this player")
+					continue
+				}
+				if pendingSeek != 0 {
+					pendingSeek += delta
+					if pendingSeek == 0 {
+						status := "Playing"
+						if resumeAfterSeek {
+							status = "Paused"
+						}
+						finishPendingSeek(status)
+						continue
+					}
+					setPendingSeek(pendingSeek)
+					continue
+				}
+				position, err := seekByWithTimeout(streamCtx, seeker, delta)
+				if errors.Is(err, playback.ErrSeekNotBuffered) {
+					if !streamRunning {
+						display.SetStatus("End of ready audio · cannot seek farther")
+						continue
+					}
+					pausable, canPause := player.(playback.Pausable)
+					if !canPause {
+						display.SetStatus("More audio is needed before seeking")
+						continue
+					}
+					resumeAfterSeek = paused
+					if !paused {
+						if pauseErr := pausable.SetPaused(streamCtx, true); pauseErr != nil {
+							display.SetStatus("Could not pause while audio buffers")
+							continue
+						}
+						paused = true
+						display.SetPaused(true)
+					}
+					setPendingSeek(delta)
+					continue
+				}
+				if err != nil {
+					display.SetStatus(seekFailureStatus(err))
+					continue
+				}
+				display.SetPosition(position.Seq, position.Offset, position.Duration)
+				chapter := chapterIndexForSequence(chapters, position.Seq)
+				if chapter != currentChapter {
+					currentChapter = chapter
+					display.SetChapter(chapter)
+				}
+				if delta > 0 {
+					display.SetStatus("Skipped ahead 5 seconds")
+				} else {
+					display.SetStatus("Skipped back 5 seconds")
+				}
 			case playerui.ActionPrevious, playerui.ActionNext:
 				target := currentChapter
 				if action.Kind == playerui.ActionPrevious {
@@ -328,10 +442,15 @@ func runPlaybackPass(
 				if streamRunning {
 					completion := <-streamResults
 					streamRunning = false
-					if completion.err != nil && !errors.Is(completion.err, context.Canceled) && ctx.Err() == nil {
-						return playbackDecision{nextChapter: -1, err: completion.err}
+					if ctx.Err() != nil {
+						return playbackDecision{nextChapter: -1, err: ctx.Err()}
 					}
-					streamReport = completion.report
+					// The stream belongs to the chapter being replaced. Once the
+					// user requests navigation, teardown errors from that superseded
+					// stream must not be reported as a source failure.
+					if completion.err == nil {
+						streamReport = completion.report
+					}
 				}
 				return playbackDecision{report: streamReport, nextChapter: target}
 			case playerui.ActionStop:
@@ -361,6 +480,28 @@ func runPlaybackPass(
 					display.SetChapter(chapter)
 				}
 			}
+			if pendingSeek != 0 {
+				seeker, ok := player.(playback.BufferedSeeker)
+				if !ok {
+					finishPendingSeek("Seeking is unavailable for this player")
+					continue
+				}
+				position, seekErr := seekByWithTimeout(streamCtx, seeker, pendingSeek)
+				if seekErr == nil {
+					completePendingSeek(position)
+					continue
+				}
+				if !errors.Is(seekErr, playback.ErrSeekNotBuffered) {
+					finishPendingSeek(seekFailureStatus(seekErr))
+					continue
+				}
+				if !streamRunning {
+					// Generation is complete, so no more playable audio will be
+					// appended. Keep the current position and explain the limit.
+					finishPendingSeek("End of ready audio · seek cancelled")
+					continue
+				}
+			}
 		case <-ctx.Done():
 			if err := stopMonitor(); err != nil {
 				return playbackDecision{nextChapter: -1, err: apperr.New("session_save_failed", "Could not save the playback position while stopping.", "Check that your cache directory is writable.", err)}
@@ -379,6 +520,19 @@ func actionChannel(display playerScreen) <-chan playerui.Action {
 		return nil
 	}
 	return display.Actions()
+}
+
+func seekByWithTimeout(ctx context.Context, seeker playback.BufferedSeeker, delta time.Duration) (playback.Position, error) {
+	seekCtx, cancel := context.WithTimeout(ctx, playerActionTimeout)
+	defer cancel()
+	return seeker.SeekBy(seekCtx, delta)
+}
+
+func seekFailureStatus(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "Seek timed out · try again"
+	}
+	return "Could not seek audio"
 }
 
 func playerError(err error) error {

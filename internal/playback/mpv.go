@@ -27,20 +27,28 @@ type MPVOptions struct {
 type MPV struct {
 	options MPVOptions
 
-	startMu   sync.Mutex
-	mu        sync.Mutex
-	command   *exec.Cmd
-	conn      net.Conn
-	reader    *bufio.Reader
-	socket    string
-	seqs      []uint64
-	requestID uint64
-	started   bool
-	closed    bool
-	done      chan struct{}
-	exitErr   error
-	closeOnce sync.Once
+	startMu          sync.Mutex
+	mu               sync.Mutex
+	command          *exec.Cmd
+	conn             net.Conn
+	reader           *bufio.Reader
+	socket           string
+	seqs             []uint64
+	items            []Item
+	requestID        uint64
+	loadingID        uint64
+	loadedID         uint64
+	loadGeneration   uint64
+	loadedGeneration uint64
+	loadFails        map[uint64]bool
+	started          bool
+	closed           bool
+	done             chan struct{}
+	exitErr          error
+	closeOnce        sync.Once
 }
+
+const seekRecoveryTimeout = 750 * time.Millisecond
 
 func NewMPV(options MPVOptions) *MPV { return &MPV{options: options} }
 
@@ -187,6 +195,7 @@ func (p *MPV) append(ctx context.Context, item Item, offset time.Duration, withO
 		return err
 	}
 	p.seqs = append(p.seqs, item.Seq)
+	p.items = append(p.items, item)
 	return nil
 }
 
@@ -262,6 +271,223 @@ func (p *MPV) Seek(ctx context.Context, offset time.Duration) error {
 		return fmt.Errorf("seek mpv playback: %w", err)
 	}
 	return nil
+}
+
+// SeekBy moves through the ordered, ready queue. If the target crosses into a
+// different audio item, it selects that queued item and waits for its fresh
+// load event before applying the target offset.
+func (p *MPV) SeekBy(ctx context.Context, delta time.Duration) (Position, error) {
+	if ctx == nil {
+		return Position{}, errors.New("mpv seek requires a context")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.started || p.closed {
+		return Position{}, errors.New("mpv player is not running")
+	}
+	if err := ctx.Err(); err != nil {
+		return Position{}, err
+	}
+	if len(p.items) == 0 || len(p.items) != len(p.seqs) {
+		return Position{}, errors.New("mpv has no queued audio to seek")
+	}
+	maxSeconds := float64(int64(^uint64(0)>>1)) / float64(time.Second)
+	currentIndex := 0
+	seconds := 0.0
+	stablePosition := false
+	for attempt := 0; attempt < 3; attempt++ {
+		before, err := p.playlistIndexLocked(ctx)
+		if err != nil {
+			return Position{}, err
+		}
+		timeValue, err := p.commandLocked(ctx, []any{"get_property", "time-pos"})
+		if err != nil {
+			return Position{}, err
+		}
+		readSeconds, ok := number(timeValue["data"])
+		if !ok || math.IsNaN(readSeconds) || math.IsInf(readSeconds, 0) || readSeconds < 0 || readSeconds >= maxSeconds {
+			return Position{}, errors.New("mpv returned an invalid playback offset")
+		}
+		seconds = readSeconds
+		after, err := p.playlistIndexLocked(ctx)
+		if err != nil {
+			return Position{}, err
+		}
+		if before != after {
+			continue
+		}
+		currentIndex = before
+		stablePosition = true
+		break
+	}
+	if !stablePosition {
+		return Position{}, errors.New("mpv playback changed while reading the seek position")
+	}
+
+	targetIndex := currentIndex
+	targetOffset := time.Duration(seconds*float64(time.Second)) + delta
+	for targetOffset < 0 && targetIndex > 0 {
+		targetIndex--
+		previousDuration := p.items[targetIndex].Duration
+		if previousDuration <= 0 {
+			return Position{}, errors.New("mpv has no duration for a queued audio item")
+		}
+		targetOffset += previousDuration
+	}
+	if targetOffset < 0 {
+		targetOffset = 0
+	}
+	for {
+		duration := p.items[targetIndex].Duration
+		if duration <= 0 {
+			return Position{}, errors.New("mpv has no duration for a queued audio item")
+		}
+		if targetOffset < duration {
+			break
+		}
+		if targetIndex+1 >= len(p.items) {
+			return Position{}, ErrSeekNotBuffered
+		}
+		targetOffset -= duration
+		targetIndex++
+	}
+	target := p.items[targetIndex]
+	if targetIndex == currentIndex {
+		if _, err := p.commandLocked(ctx, []any{"set_property", "time-pos", targetOffset.Seconds()}); err != nil {
+			return Position{}, fmt.Errorf("seek mpv playback: %w", err)
+		}
+		return Position{Seq: target.Seq, Offset: targetOffset, Duration: target.Duration}, nil
+	}
+
+	currentEntryID, err := p.playlistEntryIDLocked(ctx, currentIndex)
+	if err != nil {
+		return Position{}, err
+	}
+	entryID, err := p.playlistEntryIDLocked(ctx, targetIndex)
+	if err != nil {
+		return Position{}, err
+	}
+	loadGeneration := p.loadGeneration
+	p.loadedID = 0
+	delete(p.loadFails, entryID)
+	if _, err := p.commandLocked(ctx, []any{"playlist-play-index", targetIndex}); err != nil {
+		if restoreErr := p.restorePositionAfterFailedSeekLocked(currentIndex, currentEntryID, seconds); restoreErr != nil {
+			return Position{}, fmt.Errorf("select mpv seek target: %w (could not restore the previous position: %v)", err, restoreErr)
+		}
+		return Position{}, fmt.Errorf("select mpv seek target: %w", err)
+	}
+	if err := p.waitForEntryLoadedLocked(ctx, entryID, loadGeneration); err != nil {
+		if restoreErr := p.restorePositionAfterFailedSeekLocked(currentIndex, currentEntryID, seconds); restoreErr != nil {
+			return Position{}, fmt.Errorf("wait for mpv seek target: %w (could not restore the previous position: %v)", err, restoreErr)
+		}
+		return Position{}, fmt.Errorf("wait for mpv seek target: %w", err)
+	}
+	if _, err := p.commandLocked(ctx, []any{"set_property", "time-pos", targetOffset.Seconds()}); err != nil {
+		if restoreErr := p.restorePositionAfterFailedSeekLocked(currentIndex, currentEntryID, seconds); restoreErr != nil {
+			return Position{}, fmt.Errorf("seek mpv playback: %w (could not restore the previous position: %v)", err, restoreErr)
+		}
+		return Position{}, fmt.Errorf("seek mpv playback: %w", err)
+	}
+	return Position{Seq: target.Seq, Offset: targetOffset, Duration: target.Duration}, nil
+}
+
+func (p *MPV) playlistEntryIDLocked(ctx context.Context, index int) (uint64, error) {
+	entry, err := p.commandLocked(ctx, []any{"get_property", fmt.Sprintf("playlist/%d/id", index)})
+	if err != nil {
+		return 0, err
+	}
+	entryIDValue, ok := number(entry["data"])
+	maxSeconds := float64(int64(^uint64(0)>>1)) / float64(time.Second)
+	if !ok || math.Trunc(entryIDValue) != entryIDValue || entryIDValue < 0 || entryIDValue >= maxSeconds {
+		return 0, errors.New("mpv returned an invalid playlist entry ID")
+	}
+	return uint64(entryIDValue), nil
+}
+
+func (p *MPV) restorePositionAfterFailedSeekLocked(index int, entryID uint64, seconds float64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), seekRecoveryTimeout)
+	defer cancel()
+	loadGeneration := p.loadGeneration
+	p.loadedID = 0
+	delete(p.loadFails, entryID)
+	if _, err := p.commandLocked(ctx, []any{"playlist-play-index", index}); err != nil {
+		return fmt.Errorf("select previous playlist entry: %w", err)
+	}
+	if err := p.waitForEntryLoadedLocked(ctx, entryID, loadGeneration); err != nil {
+		return fmt.Errorf("wait for previous playlist entry: %w", err)
+	}
+	if _, err := p.commandLocked(ctx, []any{"set_property", "time-pos", seconds}); err != nil {
+		return fmt.Errorf("restore previous playback offset: %w", err)
+	}
+	return nil
+}
+
+func (p *MPV) waitForEntryLoadedLocked(ctx context.Context, entryID, afterGeneration uint64) error {
+	if p.loadedID == entryID && p.loadedGeneration != afterGeneration {
+		return nil
+	}
+	cleanupDeadline := p.watchContextDeadlineLocked(ctx)
+	defer cleanupDeadline()
+	for p.loadedID != entryID || p.loadedGeneration == afterGeneration {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		line, err := p.reader.ReadBytes('\n')
+		if err != nil {
+			return fmt.Errorf("read mpv load event: %w", contextSocketError(ctx, err))
+		}
+		var event map[string]any
+		if err := json.Unmarshal(line, &event); err != nil {
+			return fmt.Errorf("decode mpv load event: %w", err)
+		}
+		p.consumeEventLocked(event)
+		if p.loadFails[entryID] {
+			return errors.New("mpv could not load the selected playlist entry")
+		}
+	}
+	delete(p.loadFails, entryID)
+	return nil
+}
+
+func (p *MPV) consumeEventLocked(message map[string]any) {
+	event, ok := message["event"].(string)
+	if !ok {
+		return
+	}
+	switch event {
+	case "start-file":
+		p.loadGeneration++
+		p.loadedID = 0
+		p.loadingID = 0
+		if value, ok := number(message["playlist_entry_id"]); ok && value >= 0 && math.Trunc(value) == value {
+			p.loadingID = uint64(value)
+		}
+	case "file-loaded":
+		p.loadedID = p.loadingID
+		p.loadedGeneration = p.loadGeneration
+	case "end-file":
+		if message["reason"] != "error" {
+			return
+		}
+		if value, ok := number(message["playlist_entry_id"]); ok && value >= 0 && math.Trunc(value) == value {
+			if p.loadFails == nil {
+				p.loadFails = make(map[uint64]bool)
+			}
+			p.loadFails[uint64(value)] = true
+		}
+	}
+}
+
+func (p *MPV) playlistIndexLocked(ctx context.Context) (int, error) {
+	playlist, err := p.commandLocked(ctx, []any{"get_property", "playlist-pos"})
+	if err != nil {
+		return 0, err
+	}
+	playlistPosition, ok := number(playlist["data"])
+	if !ok || math.Trunc(playlistPosition) != playlistPosition || playlistPosition < 0 || playlistPosition >= float64(len(p.items)) {
+		return 0, errors.New("mpv returned an invalid playlist position")
+	}
+	return int(playlistPosition), nil
 }
 
 // SetPaused toggles mpv's pause property for the interactive Listen player.
@@ -360,24 +586,8 @@ func (p *MPV) commandLocked(ctx context.Context, command []any) (map[string]any,
 	if err != nil {
 		return nil, err
 	}
-	stopDeadline := make(chan struct{})
-	deadlineDone := make(chan struct{})
-	go func(conn net.Conn) {
-		defer close(deadlineDone)
-		select {
-		case <-ctx.Done():
-			_ = conn.SetDeadline(time.Now())
-		case <-stopDeadline:
-		}
-	}(p.conn)
-	defer func() {
-		close(stopDeadline)
-		<-deadlineDone
-		_ = p.conn.SetDeadline(time.Time{})
-	}()
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = p.conn.SetDeadline(deadline)
-	}
+	cleanupDeadline := p.watchContextDeadlineLocked(ctx)
+	defer cleanupDeadline()
 	if _, err := p.conn.Write(append(data, '\n')); err != nil {
 		return nil, fmt.Errorf("send mpv command: %w", contextSocketError(ctx, err))
 	}
@@ -390,6 +600,10 @@ func (p *MPV) commandLocked(ctx context.Context, command []any) (map[string]any,
 		if err := json.Unmarshal(line, &response); err != nil {
 			return nil, fmt.Errorf("decode mpv response: %w", err)
 		}
+		if _, ok := response["event"]; ok {
+			p.consumeEventLocked(response)
+			continue
+		}
 		id, ok := number(response["request_id"])
 		if !ok || uint64(id) != requestID {
 			continue // Ignore unsolicited mpv events and other command replies.
@@ -398,6 +612,27 @@ func (p *MPV) commandLocked(ctx context.Context, command []any) (map[string]any,
 			return nil, fmt.Errorf("mpv command failed: %v", response["error"])
 		}
 		return response, nil
+	}
+}
+
+func (p *MPV) watchContextDeadlineLocked(ctx context.Context) func() {
+	stopDeadline := make(chan struct{})
+	deadlineDone := make(chan struct{})
+	go func(conn net.Conn) {
+		defer close(deadlineDone)
+		select {
+		case <-ctx.Done():
+			_ = conn.SetDeadline(time.Now())
+		case <-stopDeadline:
+		}
+	}(p.conn)
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = p.conn.SetDeadline(deadline)
+	}
+	return func() {
+		close(stopDeadline)
+		<-deadlineDone
+		_ = p.conn.SetDeadline(time.Time{})
 	}
 }
 
