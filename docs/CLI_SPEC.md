@@ -12,7 +12,11 @@ listen setup
 listen setup --translate en:pt-BR
 ```
 
-`<source>` may eventually be a file, directory, or `-` for stdin. File type is inferred from content/extension; users do not choose parsers. The current reader supports UTF-8 plain-text files, Markdown files, and EPUB books.
+`<source>` may be a file, directory, or `-` for stdin. File type is inferred
+from content/extension; users do not choose parsers. The reader supports
+UTF-8 plain-text files, Markdown, HTML, EPUB books, text-based PDFs, and
+documentation directories. Directory behavior is specified in
+[`DIRECTORY_SOURCES.md`](DIRECTORY_SOURCES.md).
 
 ## Discovery
 

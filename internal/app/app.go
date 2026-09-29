@@ -23,6 +23,7 @@ import (
 	"github.com/prettyletto/listen/internal/session"
 	"github.com/prettyletto/listen/internal/settings"
 	"github.com/prettyletto/listen/internal/source"
+	directorysource "github.com/prettyletto/listen/internal/source/directory"
 	epubsource "github.com/prettyletto/listen/internal/source/epub"
 	htmlsource "github.com/prettyletto/listen/internal/source/html"
 	markdownsource "github.com/prettyletto/listen/internal/source/markdown"
@@ -60,7 +61,7 @@ Commands:
   models                 List available OpenAI translation models
   doctor                 Inspect local runtime and player readiness
 
-Current sources: UTF-8 text files, Markdown files, HTML documents, EPUB books, and text-based PDFs.
+Current sources: UTF-8 text files, Markdown files, HTML documents, EPUB books, text-based PDFs, and documentation directories.
 `
 
 type listenOptions struct {
@@ -362,6 +363,9 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 			}
 			return apperr.New("source_empty", "The source has no readable text.", "Choose a file that contains text.", err)
 		default:
+			if errors.Is(err, directorysource.ErrNoDocuments) {
+				return apperr.New("source_empty", "This directory has no readable documentation files.", "Add text or Markdown documents, or check the directory's .gitignore rules.", err)
+			}
 			if strings.EqualFold(filepath.Ext(input.Name), ".pdf") {
 				if errors.Is(err, pdfsource.ErrNeedsOCR) {
 					return apperr.New("pdf_needs_ocr", "This PDF does not contain enough readable text.", "Choose a text-based PDF. Scanned-page OCR is not available yet.", err)
@@ -379,6 +383,9 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 			}
 			if isHTMLPath(input.Name) {
 				return apperr.New("source_read_failed", "Could not read this HTML document.", "Check that the file is readable HTML and try again.", err)
+			}
+			if info, statErr := os.Stat(input.Path); statErr == nil && info.IsDir() {
+				return apperr.New("source_read_failed", "Could not read this documentation directory.", "Check that its files and .gitignore rules are readable, then try again.", err)
 			}
 			return apperr.New("source_read_failed", "Could not read the text source.", "Check that the file is readable and try again.", err)
 		}
@@ -791,7 +798,9 @@ func startAuthorizedCloudTranslator(ctx context.Context, config settings.Config,
 }
 
 func parseDocument(ctx context.Context, input source.Input) (*domain.Document, error) {
-	selected, err := source.SelectParser(ctx, input, epubsource.NewParser(), htmlsource.NewParser(), pdfsource.NewParser(), markdownsource.NewParser(), textsource.NewParser())
+	parsers := []source.Parser{epubsource.NewParser(), htmlsource.NewParser(), pdfsource.NewParser(), markdownsource.NewParser(), textsource.NewParser()}
+	allParsers := append([]source.Parser{directorysource.NewParser(parsers...)}, parsers...)
+	selected, err := source.SelectParser(ctx, input, allParsers...)
 	if err != nil {
 		return nil, err
 	}

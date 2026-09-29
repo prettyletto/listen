@@ -7,6 +7,7 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -24,7 +25,7 @@ func TestRunPrintsHelp(t *testing.T) {
 		if err := Run(context.Background(), args, strings.NewReader(""), &stdout, &bytes.Buffer{}); err != nil {
 			t.Fatalf("Run(%v): %v", args, err)
 		}
-		if !strings.Contains(stdout.String(), "listen <source>") || !strings.Contains(stdout.String(), "--export [DIRECTORY]") || !strings.Contains(stdout.String(), "--translate BCP-47") {
+		if !strings.Contains(stdout.String(), "listen <source>") || !strings.Contains(stdout.String(), "--export [DIRECTORY]") || !strings.Contains(stdout.String(), "--translate BCP-47") || !strings.Contains(stdout.String(), "documentation directories") {
 			t.Fatalf("Run(%v) did not explain the default command: %q", args, stdout.String())
 		}
 	}
@@ -161,6 +162,54 @@ func TestParseDocumentSelectsPDFParser(t *testing.T) {
 	}
 	if doc.Format != domain.FormatPDF || doc.Metadata.Title != wantTitle {
 		t.Fatalf("unexpected parsed PDF: format=%q title=%q", doc.Format, doc.Metadata.Title)
+	}
+}
+
+func TestListenDocumentationDirectoryUsesOrderedCompositeDocument(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	var spoken []string
+	var sourceOrder []string
+	path, err := filepath.Abs(filepath.Join("..", "..", "testdata", "directories", "repository", "docs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deps := runtimeDeps{
+		startSynth: func(_ context.Context, _ kokoro.Options) (speech.Synthesizer, error) {
+			return appTestSynth{t: t, onRequest: func(request speech.Request) {
+				spoken = append(spoken, request.Segment.SpokenText)
+				relative, err := filepath.Rel(path, request.Segment.Source.Path)
+				if err != nil {
+					t.Errorf("relative source path: %v", err)
+				}
+				sourceOrder = append(sourceOrder, filepath.ToSlash(relative))
+			}}, nil
+		},
+	}
+	if err := runWithRuntime(context.Background(), []string{path, "--no-play"}, nil, io.Discard, io.Discard, deps); err != nil {
+		t.Fatalf("listen to documentation directory: %v", err)
+	}
+	joined := strings.Join(spoken, "\n")
+	ordered := []string{
+		"Start with the architecture guide.",
+		"Documents preserve reading order and source structure.",
+		"Go owns parsing and deterministic ordering.",
+	}
+	previous := -1
+	for _, text := range ordered {
+		position := strings.Index(joined, text)
+		if position <= previous {
+			t.Fatalf("documentation session did not preserve priority order for %q: %q", text, joined)
+		}
+		previous = position
+	}
+	wantSourceOrder := []string{
+		"README.md", "adr/0002-document-ir.md", "architecture.md",
+	}
+	if !reflect.DeepEqual(sourceOrder, wantSourceOrder) {
+		t.Fatalf("synthesized file order = %#v, want %#v", sourceOrder, wantSourceOrder)
 	}
 }
 

@@ -92,6 +92,102 @@ func TestFingerprintFileHonorsCancellation(t *testing.T) {
 	}
 }
 
+func TestDirectoryStructureIsReparsedAfterFileSetChanges(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "docs")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	firstPath := filepath.Join(root, "README.md")
+	if err := os.WriteFile(firstPath, []byte("# Intro\n\nFirst document."), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := cache.NewFileStore(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := source.Input{Name: "docs", Path: root}
+	if _, reusable, err := documentCacheKey(context.Background(), input); err != nil || reusable {
+		t.Fatalf("directory manifest should be recomputed: reusable=%v err=%v", reusable, err)
+	}
+	first, err := parseCachedDocument(context.Background(), input, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPath := filepath.Join(root, "guide.md")
+	if err := os.WriteFile(secondPath, []byte("# Guide\n\nSecond document."), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := parseCachedDocument(context.Background(), input, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID == second.ID || len(second.Blocks) <= len(first.Blocks) {
+		t.Fatalf("directory structure was reused after its file set changed: first=%#v second=%#v", first, second)
+	}
+}
+
+func TestRelativeDirectoryPlanCacheIdentityIncludesWorkingDirectory(t *testing.T) {
+	originalDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Chdir(originalDirectory); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	}()
+
+	firstRoot := filepath.Join(t.TempDir(), "workspace", "docs")
+	secondRoot := filepath.Join(t.TempDir(), "workspace", "docs")
+	content := []byte("# Shared docs\n\nThis content is the same in both directories.")
+	for _, root := range []string{firstRoot, secondRoot} {
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, "README.md"), content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store, err := cache.NewFileStore(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := os.Chdir(filepath.Dir(firstRoot)); err != nil {
+		t.Fatal(err)
+	}
+	firstDoc, err := parseCachedDocument(ctx, source.Input{Name: "docs", Path: "docs"}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstPlan, err := planCachedSegments(ctx, firstDoc, "docs", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(filepath.Dir(secondRoot)); err != nil {
+		t.Fatal(err)
+	}
+	secondDoc, err := parseCachedDocument(ctx, source.Input{Name: "docs", Path: "docs"}, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPlan, err := planCachedSegments(ctx, secondDoc, "docs", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstDoc.ID != secondDoc.ID {
+		t.Fatalf("equivalent directories should have the same content identity: %q != %q", firstDoc.ID, secondDoc.ID)
+	}
+	if len(firstPlan.Segments) == 0 || len(secondPlan.Segments) == 0 {
+		t.Fatal("expected a segment plan for each directory")
+	}
+	firstSource := firstPlan.Segments[0].Source.Path
+	secondSource := secondPlan.Segments[0].Source.Path
+	if firstSource != filepath.Join(firstRoot, "README.md") || secondSource != filepath.Join(secondRoot, "README.md") {
+		t.Fatalf("relative directory cache returned stale source paths: first=%q second=%q", firstSource, secondSource)
+	}
+}
+
 func TestAllAudioCachedAvoidsStartingSpeechRuntimeForExport(t *testing.T) {
 	store, err := speech.NewCache(t.TempDir())
 	if err != nil {

@@ -60,6 +60,15 @@ func documentCacheKey(ctx context.Context, input source.Input) (string, bool, er
 	if err != nil {
 		return "", false, fmt.Errorf("resolve source for structure cache: %w", err)
 	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", false, fmt.Errorf("inspect source for structure cache: %w", err)
+	}
+	if info.IsDir() {
+		// Directory identity depends on its current ignore rules and file set.
+		// Parse it on each run rather than reusing a manifest keyed by one path.
+		return "", false, nil
+	}
 	digest, err := fingerprintFile(ctx, path)
 	if err != nil {
 		return "", false, fmt.Errorf("fingerprint source: %w", err)
@@ -99,7 +108,11 @@ func planCachedSegments(ctx context.Context, doc *domain.Document, sourcePath st
 	if doc == nil {
 		return segment.Plan{}, fmt.Errorf("cannot cache a segment plan for a nil document")
 	}
-	key := cache.Key(planManifestVersion, doc.ID, sourcePath, "target-70", "maximum-150", "include-code-false")
+	sourceIdentity, err := planSourceIdentity(sourcePath)
+	if err != nil {
+		return segment.Plan{}, err
+	}
+	key := cache.Key(planManifestVersion, doc.ID, sourceIdentity, "target-70", "maximum-150", "include-code-false")
 	var plan segment.Plan
 	found, err := store.Get(ctx, cache.StageSegments, key, &plan)
 	if err != nil {
@@ -119,6 +132,24 @@ func planCachedSegments(ctx context.Context, doc *domain.Document, sourcePath st
 		return segment.Plan{}, fmt.Errorf("save segment manifest: %w", err)
 	}
 	return plan, nil
+}
+
+func planSourceIdentity(sourcePath string) (string, error) {
+	if sourcePath == "" {
+		return "", nil
+	}
+	absolute, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return "", fmt.Errorf("resolve source for segment cache: %w", err)
+	}
+	if info, err := os.Stat(absolute); err == nil && info.IsDir() {
+		resolved, err := filepath.EvalSymlinks(absolute)
+		if err != nil {
+			return "", fmt.Errorf("resolve documentation directory for segment cache: %w", err)
+		}
+		return resolved, nil
+	}
+	return absolute, nil
 }
 
 func allAudioCached(ctx context.Context, store *speech.Cache, plan segment.Plan, voice string, speed float64) (bool, error) {

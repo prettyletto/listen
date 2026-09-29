@@ -112,7 +112,7 @@ func blockUnits(doc *domain.Document) map[uint64]blockUnit {
 		}
 		path := append(append([]string(nil), parentPath...), strings.TrimSpace(node.Title))
 		unitID := parentID
-		if structure.IsMajorRole(node.Role) || (unitID == "" && node.Role == domain.RoleBook) {
+		if structure.IsMajorRole(node.Role) || (node.Provenance == domain.StructureDirectory && node.Depth > 0) || (unitID == "" && node.Role == domain.RoleBook) {
 			unitID = node.ID
 		}
 		if unitID == "" {

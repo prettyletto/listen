@@ -10,8 +10,13 @@ listen setup --translate en:pt-BR
 listen book.epub
 listen book.epub --translate pt-BR
 listen README.md
+listen docs/
 listen book.epub --export
 ```
+
+`listen docs/` reads supported documentation files into one ordered session.
+Directory inputs honor applicable `.gitignore` rules and keep each block's
+source path in the shared document model.
 
 Everything complicated lives behind those commands: structure parsing, resumable caches, translation backends, local-vs-cloud planning, Kokoro process management, ordered concurrent generation, buffering, playback, and export.
 

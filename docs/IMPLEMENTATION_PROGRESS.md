@@ -296,3 +296,37 @@ confirms the documented source list.
 
 **Reviewer:** Approved by an independent read-only reviewer with no remaining
 P0–P2 findings.
+
+## Slice 11 — developer documents/directories
+
+**Scenario:** `listen docs/` builds one ordered session from documentation
+files and keeps each spoken segment within one source file.
+
+**Status:** Complete after independent reviewer approval. Directory inputs
+build one deterministic session from supported documentation files.
+
+**Implemented:** Directory inputs recursively resolve Markdown, plain text,
+HTML/XHTML, and PDF files. Applicable repository and nested `.gitignore` rules
+control inclusion, symlinks and VCS metadata are skipped, and a documented
+README/AGENTS/ADR/docs priority policy precedes deterministic path ordering.
+Existing format parsers feed one composite Document IR with contiguous block
+sequences, adjusted outline ranges, unique path-namespaced IDs, and preserved
+source references. Directory file boundaries are honored during segmentation.
+Directory structures are reparsed so changes to the file set or ignore rules
+cannot return a stale structure manifest.
+
+**Verified:** The directory golden covers metadata, source paths, ordered
+blocks, ignore/negation behavior, and outline ranges. Tests verify stable IDs
+and order across file creation order, inherited and nested ignore rules,
+cancellation, directory cache invalidation, and `listen docs/ --no-play`
+through fake synthesis. A shared-cache regression verifies that identical
+relative directory names from different working directories retain their own
+segment source paths. `go test ./...`, `go vet ./...`, and `git diff --check`
+pass.
+
+**Reviewer:** Approved after follow-up by an independent read-only reviewer.
+The first review found a P2 segment-plan cache collision: identical relative
+directory paths from different working directories could reuse stale absolute
+source paths. The cache now keys directory plans by resolved absolute path, and
+the reviewer confirmed the regression is closed with no remaining P0–P2
+findings.

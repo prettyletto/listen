@@ -4,12 +4,13 @@ package domain
 type Format string
 
 const (
-	FormatText     Format = "text"
-	FormatMarkdown Format = "markdown"
-	FormatHTML     Format = "html"
-	FormatEPUB     Format = "epub"
-	FormatPDF      Format = "pdf"
-	FormatCode     Format = "code"
+	FormatText      Format = "text"
+	FormatMarkdown  Format = "markdown"
+	FormatHTML      Format = "html"
+	FormatEPUB      Format = "epub"
+	FormatPDF       Format = "pdf"
+	FormatCode      Format = "code"
+	FormatDirectory Format = "directory"
 )
 
 type Metadata struct {
@@ -83,6 +84,7 @@ const (
 	StructureHeading     StructureSource = "content_heading"
 	StructurePDFBookmark StructureSource = "pdf_bookmark"
 	StructureHeuristic   StructureSource = "heuristic"
+	StructureDirectory   StructureSource = "directory"
 )
 
 // OutlineNode maps structure to a half-open interval over Document.Blocks.

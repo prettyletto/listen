@@ -1,0 +1,327 @@
+{
+  "format": "directory",
+  "metadata": {
+    "Title": "repository",
+    "Authors": null,
+    "Language": ""
+  },
+  "blocks": [
+    {
+      "seq": 0,
+      "kind": "heading",
+      "text": "Listen CLI",
+      "level": 1,
+      "path": "README.md",
+      "byte_start": 2,
+      "byte_end": 12
+    },
+    {
+      "seq": 1,
+      "kind": "paragraph",
+      "text": "The reader makes documentation listenable.",
+      "path": "README.md",
+      "byte_start": 14,
+      "byte_end": 56
+    },
+    {
+      "seq": 2,
+      "kind": "heading",
+      "text": "Working agreement",
+      "level": 1,
+      "path": "AGENTS.md",
+      "byte_start": 2,
+      "byte_end": 19
+    },
+    {
+      "seq": 3,
+      "kind": "paragraph",
+      "text": "Keep the reading order stable.",
+      "path": "AGENTS.md",
+      "byte_start": 21,
+      "byte_end": 51
+    },
+    {
+      "seq": 4,
+      "kind": "heading",
+      "text": "Documentation index",
+      "level": 1,
+      "path": "docs/README.md",
+      "byte_start": 2,
+      "byte_end": 21
+    },
+    {
+      "seq": 5,
+      "kind": "paragraph",
+      "text": "Start with the architecture guide.",
+      "path": "docs/README.md",
+      "byte_start": 23,
+      "byte_end": 57
+    },
+    {
+      "seq": 6,
+      "kind": "heading",
+      "text": "Quickstart",
+      "level": 1,
+      "path": "guides/README.md",
+      "byte_start": 2,
+      "byte_end": 12
+    },
+    {
+      "seq": 7,
+      "kind": "paragraph",
+      "text": "Use listen docs/ to read the documentation set.",
+      "path": "guides/README.md",
+      "byte_start": 14,
+      "byte_end": 63
+    },
+    {
+      "seq": 8,
+      "kind": "heading",
+      "text": "ADR 0002: Canonical Document IR",
+      "level": 1,
+      "path": "docs/adr/0002-document-ir.md",
+      "byte_start": 2,
+      "byte_end": 33
+    },
+    {
+      "seq": 9,
+      "kind": "paragraph",
+      "text": "Documents preserve reading order and source structure.",
+      "path": "docs/adr/0002-document-ir.md",
+      "byte_start": 35,
+      "byte_end": 89
+    },
+    {
+      "seq": 10,
+      "kind": "heading",
+      "text": "Architecture",
+      "level": 1,
+      "path": "docs/architecture.md",
+      "byte_start": 2,
+      "byte_end": 14
+    },
+    {
+      "seq": 11,
+      "kind": "paragraph",
+      "text": "Go owns parsing and deterministic ordering.",
+      "path": "docs/architecture.md",
+      "byte_start": 16,
+      "byte_end": 59
+    },
+    {
+      "seq": 12,
+      "kind": "heading",
+      "text": "Kept draft notes",
+      "level": 1,
+      "path": "guides/keep.draft.md",
+      "byte_start": 2,
+      "byte_end": 18
+    },
+    {
+      "seq": 13,
+      "kind": "paragraph",
+      "text": "A negated ignore rule can retain selected documentation.",
+      "path": "guides/keep.draft.md",
+      "byte_start": 20,
+      "byte_end": 76
+    },
+    {
+      "seq": 14,
+      "kind": "heading",
+      "text": "Retained file",
+      "level": 1,
+      "path": "ignored/keep.md",
+      "byte_start": 2,
+      "byte_end": 15
+    },
+    {
+      "seq": 15,
+      "kind": "paragraph",
+      "text": "This file is re-included after the directory ignore.",
+      "path": "ignored/keep.md",
+      "byte_start": 17,
+      "byte_end": 69
+    }
+  ],
+  "outline": [
+    {
+      "title": "repository",
+      "role": "book",
+      "depth": 0,
+      "start_block": 0,
+      "end_block_exclusive": 16,
+      "confidence": "high",
+      "provenance": "directory",
+      "children": [
+        {
+          "title": "Listen CLI",
+          "role": "book",
+          "depth": 1,
+          "start_block": 0,
+          "end_block_exclusive": 2,
+          "confidence": "high",
+          "provenance": "directory",
+          "children": [
+            {
+              "title": "Listen CLI",
+              "role": "book",
+              "depth": 2,
+              "start_block": 0,
+              "end_block_exclusive": 2,
+              "target_path": "README.md",
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        },
+        {
+          "title": "Working agreement",
+          "role": "book",
+          "depth": 1,
+          "start_block": 2,
+          "end_block_exclusive": 4,
+          "confidence": "high",
+          "provenance": "directory",
+          "children": [
+            {
+              "title": "Working agreement",
+              "role": "book",
+              "depth": 2,
+              "start_block": 2,
+              "end_block_exclusive": 4,
+              "target_path": "AGENTS.md",
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        },
+        {
+          "title": "Documentation index",
+          "role": "book",
+          "depth": 1,
+          "start_block": 4,
+          "end_block_exclusive": 6,
+          "confidence": "high",
+          "provenance": "directory",
+          "children": [
+            {
+              "title": "Documentation index",
+              "role": "book",
+              "depth": 2,
+              "start_block": 4,
+              "end_block_exclusive": 6,
+              "target_path": "docs/README.md",
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        },
+        {
+          "title": "Quickstart",
+          "role": "book",
+          "depth": 1,
+          "start_block": 6,
+          "end_block_exclusive": 8,
+          "confidence": "high",
+          "provenance": "directory",
+          "children": [
+            {
+              "title": "Quickstart",
+              "role": "book",
+              "depth": 2,
+              "start_block": 6,
+              "end_block_exclusive": 8,
+              "target_path": "guides/README.md",
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        },
+        {
+          "title": "ADR 0002: Canonical Document IR",
+          "role": "book",
+          "depth": 1,
+          "start_block": 8,
+          "end_block_exclusive": 10,
+          "confidence": "high",
+          "provenance": "directory",
+          "children": [
+            {
+              "title": "ADR 0002: Canonical Document IR",
+              "role": "book",
+              "depth": 2,
+              "start_block": 8,
+              "end_block_exclusive": 10,
+              "target_path": "docs/adr/0002-document-ir.md",
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        },
+        {
+          "title": "Architecture",
+          "role": "book",
+          "depth": 1,
+          "start_block": 10,
+          "end_block_exclusive": 12,
+          "confidence": "high",
+          "provenance": "directory",
+          "children": [
+            {
+              "title": "Architecture",
+              "role": "book",
+              "depth": 2,
+              "start_block": 10,
+              "end_block_exclusive": 12,
+              "target_path": "docs/architecture.md",
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        },
+        {
+          "title": "Kept draft notes",
+          "role": "book",
+          "depth": 1,
+          "start_block": 12,
+          "end_block_exclusive": 14,
+          "confidence": "high",
+          "provenance": "directory",
+          "children": [
+            {
+              "title": "Kept draft notes",
+              "role": "book",
+              "depth": 2,
+              "start_block": 12,
+              "end_block_exclusive": 14,
+              "target_path": "guides/keep.draft.md",
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        },
+        {
+          "title": "Retained file",
+          "role": "book",
+          "depth": 1,
+          "start_block": 14,
+          "end_block_exclusive": 16,
+          "confidence": "high",
+          "provenance": "directory",
+          "children": [
+            {
+              "title": "Retained file",
+              "role": "book",
+              "depth": 2,
+              "start_block": 14,
+              "end_block_exclusive": 16,
+              "target_path": "ignored/keep.md",
+              "confidence": "high",
+              "provenance": "content_heading"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
