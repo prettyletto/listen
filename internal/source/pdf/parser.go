@@ -1,6 +1,6 @@
-// Package pdf converts born-digital PDF text and page layout into the canonical
-// document IR. It uses Poppler for positioned text extraction and treats the
-// inferred reading order as best effort.
+// Package pdf converts positioned text and scanned pages into the canonical
+// document IR. It uses Poppler and local Tesseract OCR and treats inferred
+// reading order as best effort.
 package pdf
 
 import (
@@ -19,14 +19,14 @@ import (
 
 	"github.com/prettyletto/listen/internal/domain"
 	"github.com/prettyletto/listen/internal/source"
-	textsource "github.com/prettyletto/listen/internal/source/text"
 )
 
-const parserVersion = "pdf-layout-v1"
+const ParserVersion = "pdf-layout-ocr-v1"
+
+const parserVersion = ParserVersion
 
 var (
 	ErrReaderUnavailable = errors.New("PDF text extraction tools are unavailable")
-	ErrNeedsOCR          = errors.New("PDF appears to contain scanned pages without readable text")
 	ErrResourceLimit     = errors.New("PDF exceeds a processing resource limit")
 )
 
@@ -79,166 +79,7 @@ func (Parser) Probe(ctx context.Context, input source.Input) (int, error) {
 }
 
 func (p Parser) Parse(ctx context.Context, input source.Input) (*domain.Document, error) {
-	if ctx == nil {
-		return nil, errors.New("PDF parser requires a context")
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	path, cleanup, err := materializeInput(ctx, input)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	path, err = filepath.Abs(path)
-	if err != nil {
-		return nil, fmt.Errorf("resolve PDF source path: %w", err)
-	}
-
-	if _, err := exec.LookPath("pdftohtml"); err != nil {
-		return nil, fmt.Errorf("%w: install Poppler utilities and try again", ErrReaderUnavailable)
-	}
-	if _, err := exec.LookPath("pdfimages"); err != nil {
-		return nil, fmt.Errorf("%w: install Poppler utilities and try again", ErrReaderUnavailable)
-	}
-	run := p.run
-	if run == nil {
-		run = runCommand
-	}
-	outputDir, err := os.MkdirTemp("", "listen-pdf-output-*")
-	if err != nil {
-		return nil, fmt.Errorf("prepare temporary PDF output directory: %w", err)
-	}
-	defer os.RemoveAll(outputDir)
-	outputPrefix := filepath.Join(outputDir, "page")
-	args := []string{"-q", "-xml", "-noroundcoord", "-zoom", "1", "-hidden", "-nomerge", "-i", "-stdout", path, outputPrefix}
-	var xmlData []byte
-	if p.runDir != nil {
-		xmlData, err = p.runDir(ctx, outputDir, "pdftohtml", args...)
-	} else if p.run != nil {
-		xmlData, err = run(ctx, "pdftohtml", args...)
-	} else {
-		xmlData, err = runCommandInDir(ctx, outputDir, "pdftohtml", args...)
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, fmt.Errorf("extract positioned PDF text: %w", err)
-	}
-	if len(xmlData) == 0 {
-		return nil, textsource.ErrEmptySource
-	}
-	pages, err := parseLayoutXML(ctx, xmlData)
-	if err != nil {
-		return nil, fmt.Errorf("read PDF text layout: %w", err)
-	}
-	if len(pages) == 0 {
-		return nil, textsource.ErrEmptySource
-	}
-	if len(pages) > maxPDFPages {
-		return nil, fmt.Errorf("%w: PDF has more than %d pages", ErrResourceLimit, maxPDFPages)
-	}
-	imageList, err := run(ctx, "pdfimages", "-list", path)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, fmt.Errorf("inspect PDF page images: %w", err)
-	}
-	imagesByPage, err := parseImageList(imageList)
-	if err != nil {
-		return nil, fmt.Errorf("read PDF image listing: %w", err)
-	}
-
-	pageHasText := 0
-	scannedPages := 0
-	for i := range pages {
-		pages[i].images = imagesByPage[pages[i].number]
-		pages[i].lines = groupTextLines(pages[i])
-		if len(pages[i].lines) > 0 {
-			pageHasText++
-		}
-		if looksScanned(pages[i]) {
-			scannedPages++
-		}
-	}
-	if scannedPages > 0 && (pageHasText == 0 || scannedPages*2 >= len(pages)) {
-		return nil, ErrNeedsOCR
-	}
-
-	pathForSource := input.Path
-	if pathForSource == "" {
-		pathForSource = input.Name
-	}
-	if pathForSource != "" {
-		if absolute, absErr := filepath.Abs(pathForSource); absErr == nil {
-			pathForSource = absolute
-		}
-	}
-	contentHash, err := hashFile(ctx, path)
-	if err != nil {
-		return nil, fmt.Errorf("identify PDF source: %w", err)
-	}
-	docID := stableID(parserVersion, contentHash)
-	title := strings.TrimSpace(strings.TrimSuffix(filepath.Base(pathForSource), filepath.Ext(pathForSource)))
-	if title == "" || title == "." {
-		title = "Untitled PDF"
-	}
-	info := readPDFInfo(ctx, run, path)
-	if info.metadata.Title != "" {
-		title = info.metadata.Title
-	}
-
-	blocks := makeBlocks(ctx, pages, pathForSource)
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if len(blocks) == 0 {
-		return nil, textsource.ErrEmptySource
-	}
-
-	doc := &domain.Document{
-		ID:       docID,
-		Format:   domain.FormatPDF,
-		Metadata: info.metadata,
-		Blocks:   blocks,
-	}
-	if doc.Metadata.Title == "" {
-		doc.Metadata.Title = title
-	}
-	addWarning(&doc.Warnings, "PDF text and reading order were reconstructed from page geometry; complex layouts may differ from the source.")
-	if info.tagged {
-		addWarning(&doc.Warnings, "This PDF contains tagged structure that was not used; bookmarks and page layout determined its reading order.")
-	}
-	if scannedPages > 0 {
-		addWarning(&doc.Warnings, "Some PDF pages appear to be scanned and were omitted because OCR is not available.")
-	}
-
-	bookmarks, bookmarkWarning, err := readBookmarks(ctx, run, path)
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err != nil {
-		return nil, err
-	}
-	if len(bookmarks) > 0 {
-		doc.Outline = outlineFromBookmarks(bookmarks, doc.Blocks, pathForSource, docID)
-		if len(doc.Outline) == 0 {
-			addWarning(&doc.Warnings, "PDF bookmarks could not be matched to readable pages; visual layout was used instead.")
-		}
-	}
-	if len(doc.Outline) == 0 {
-		doc.Outline = outlineFromHeadings(doc.Blocks, pathForSource, docID)
-		if bookmarkWarning != "" {
-			addWarning(&doc.Warnings, bookmarkWarning)
-		}
-		if len(doc.Outline) == 0 {
-			addWarning(&doc.Warnings, "No reliable section headings were found in this PDF; reading order follows page layout.")
-		}
-	}
-	return doc, nil
+	return p.ParseWithOCR(ctx, input, OCRConfig{})
 }
 
 func materializeInput(ctx context.Context, input source.Input) (string, func(), error) {
@@ -397,6 +238,8 @@ func runCommandInDir(ctx context.Context, dir, name string, args ...string) ([]b
 		limit = maxImageListBytes
 	} else if name == "pdfinfo" {
 		limit = 1 << 20
+	} else if name == "tesseract" {
+		limit = maxOCRTSVBytes
 	}
 	stdout := &cappedBuffer{limit: limit}
 	stderr := &cappedBuffer{limit: maxStderrBytes}

@@ -26,31 +26,59 @@ const (
 )
 
 func parseCachedDocument(ctx context.Context, input source.Input, store *cache.FileStore, codeMode bool) (*domain.Document, error) {
+	return parseCachedDocumentWith(ctx, input, store, codeMode, parseDocumentWithCodeMode)
+}
+
+func parseCachedDocumentWith(
+	ctx context.Context,
+	input source.Input,
+	store *cache.FileStore,
+	codeMode bool,
+	parse func(context.Context, source.Input, bool) (*domain.Document, error),
+) (*domain.Document, error) {
 	key, reusable, err := documentCacheKey(ctx, input, codeMode)
 	if err != nil {
 		return nil, err
 	}
 	if reusable {
-		var cached domain.Document
-		found, err := store.Get(ctx, cache.StageStructure, key, &cached)
+		cached, found, err := loadCachedDocument(ctx, store, key)
 		if err != nil {
-			return nil, fmt.Errorf("read structure manifest: %w", err)
+			return nil, err
 		}
 		if found {
-			return &cached, nil
+			return cached, nil
 		}
 	}
-	doc, err := parseDocumentWithCodeMode(ctx, input, codeMode)
+	doc, err := parse(ctx, input, codeMode)
 	if err != nil {
 		return nil, err
 	}
 	if !reusable {
 		key = cache.Key(documentManifestVersion, doc.ID, input.Path)
 	}
-	if err := store.PutAtomic(ctx, cache.StageStructure, key, doc); err != nil {
-		return nil, fmt.Errorf("save structure manifest: %w", err)
+	if err := saveCachedDocument(ctx, store, key, doc); err != nil {
+		return nil, err
 	}
 	return doc, nil
+}
+
+func loadCachedDocument(ctx context.Context, store *cache.FileStore, key string) (*domain.Document, bool, error) {
+	var cached domain.Document
+	found, err := store.Get(ctx, cache.StageStructure, key, &cached)
+	if err != nil {
+		return nil, false, fmt.Errorf("read structure manifest: %w", err)
+	}
+	if !found {
+		return nil, false, nil
+	}
+	return &cached, true, nil
+}
+
+func saveCachedDocument(ctx context.Context, store *cache.FileStore, key string, doc *domain.Document) error {
+	if err := store.PutAtomic(ctx, cache.StageStructure, key, doc); err != nil {
+		return fmt.Errorf("save structure manifest: %w", err)
+	}
+	return nil
 }
 
 func documentCacheKey(ctx context.Context, input source.Input, codeMode bool) (string, bool, error) {

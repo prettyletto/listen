@@ -239,7 +239,7 @@ func configCommand(ctx context.Context, args []string, stdout io.Writer) error {
 		return nil
 	}
 	if len(args) < 3 || args[0] != "set" {
-		return apperr.New("invalid_arguments", "The config command did not recognize that change.", "Use listen config set voice <id>, listen config set speed <0.5–2.0>, listen config set cloud-policy <ask|never|allowed>, or set cloud-model <model-id>.", nil)
+		return apperr.New("invalid_arguments", "The config command did not recognize that change.", "Use listen config set voice <id>, listen config set speed <0.5–2.0>, listen config set ocr-languages eng+por, or set cloud-policy <ask|never|allowed>.", nil)
 	}
 	switch args[1] {
 	case "voice":
@@ -263,6 +263,12 @@ func configCommand(ctx context.Context, args []string, stdout io.Writer) error {
 			if err == nil {
 				config.Speech.DefaultSpeed = speed
 			}
+		}
+	case "ocr-languages":
+		if len(args) != 3 {
+			err = errors.New("OCR languages setting needs one value, such as eng+por")
+		} else if err = settings.ValidateOCRLanguages(args[2]); err == nil {
+			config.OCRLanguages = args[2]
 		}
 	case "cloud-policy":
 		if len(args) != 3 {
@@ -291,7 +297,7 @@ func configCommand(ctx context.Context, args []string, stdout io.Writer) error {
 		err = fmt.Errorf("unknown preference %q", args[1])
 	}
 	if err != nil {
-		return apperr.New("invalid_config", err.Error(), "Run listen voices or listen config to see supported preferences.", err)
+		return apperr.New("invalid_config", err.Error(), "Run listen voices or listen config to see supported preferences. Set OCR languages with listen config set ocr-languages eng+por.", err)
 	}
 	if err := settings.Save(ctx, userPaths.ConfigDir, config); err != nil {
 		return apperr.New("config_save_failed", "Could not save listen preferences.", "Check that your configuration directory is writable.", err)
@@ -324,7 +330,7 @@ func doctorCommand(ctx context.Context, args []string, stdout io.Writer, deps ru
 		if config.SetupComplete {
 			setupState = "setup complete"
 		}
-		if _, err := fmt.Fprintf(stdout, "Configuration: %s (default voice %s; cloud policy %s; cloud translator %s/%s)\n", setupState, config.Speech.DefaultVoice, config.CloudPolicy, config.CloudProvider, config.CloudModel); err != nil {
+		if _, err := fmt.Fprintf(stdout, "Configuration: %s (default voice %s; OCR languages %s; cloud policy %s; cloud translator %s/%s)\n", setupState, config.Speech.DefaultVoice, config.OCRLanguages, config.CloudPolicy, config.CloudProvider, config.CloudModel); err != nil {
 			return err
 		}
 	} else if _, err := fmt.Fprintln(stdout, "Configuration: defaults (run listen setup to save preferences)"); err != nil {

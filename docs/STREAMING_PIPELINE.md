@@ -18,6 +18,16 @@ ready audio     duration-bounded, not just item-bounded
 
 Exact capacities are tuned by benchmarks. They are not public UX knobs.
 
+Scanned PDFs use a bounded page producer before the segment queue. Poppler
+preflights layout and scan-like pages, then Tesseract recognizes one candidate
+page at a time in source order. Each page's segments enter the same bounded,
+ordered speech queue as other sources. The PDF path caps its opening buffer at
+three seconds and flushes ready audio at the first completed page boundary, so
+a short opening page does not wait for later OCR.
+Synthesis and OCR overlap; page results never overtake earlier pages. A
+producer error cancels downstream work while already committed OCR and audio
+artifacts remain reusable.
+
 ## Reorder gates
 
 Workers may finish `2,0,3,1`; downstream must receive `0,1,2,3`.

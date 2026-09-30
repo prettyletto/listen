@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -11,9 +12,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prettyletto/listen/internal/apperr"
 	"github.com/prettyletto/listen/internal/domain"
+	"github.com/prettyletto/listen/internal/playback"
 	"github.com/prettyletto/listen/internal/settings"
 	"github.com/prettyletto/listen/internal/source"
 	gocodesource "github.com/prettyletto/listen/internal/source/gocode"
@@ -388,22 +391,143 @@ func TestListenPDFFixtureSynthesizesReconstructedContent(t *testing.T) {
 	}
 }
 
-func TestRunReportsScannedPDFAsNeedingOCR(t *testing.T) {
-	for _, name := range []string{"pdftohtml", "pdfimages"} {
+func TestListenScannedPDFFixtureUsesLocalOCRAndReportsProgress(t *testing.T) {
+	for _, name := range []string{"pdftohtml", "pdfimages", "pdftoppm", "tesseract"} {
 		if _, err := exec.LookPath(name); err != nil {
-			t.Skip("Poppler PDF tools are not installed")
+			t.Skip("Poppler or Tesseract OCR tools are not installed")
 		}
 	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
-	err := Run(context.Background(), []string{"../../testdata/pdf/scanned.pdf", "--no-play"}, strings.NewReader(""), io.Discard, io.Discard)
-	if !apperr.HasCode(err, "pdf_needs_ocr") {
-		t.Fatalf("got %v, want actionable pdf_needs_ocr error", err)
+	var spoken []string
+	var stderr bytes.Buffer
+	deps := runtimeDeps{
+		startSynth: func(_ context.Context, _ kokoro.Options) (speech.Synthesizer, error) {
+			return appTestSynth{t: t, onRequest: func(request speech.Request) {
+				spoken = append(spoken, request.Segment.SpokenText)
+			}}, nil
+		},
 	}
-	var appError *apperr.Error
-	if !errors.As(err, &appError) || !strings.Contains(appError.Hint, "OCR is not available") {
-		t.Fatalf("scanned-PDF error did not explain the current limitation: %#v", appError)
+	err := runWithRuntime(context.Background(), []string{"../../testdata/pdf/scanned.pdf", "--no-play"}, strings.NewReader(""), io.Discard, &stderr, deps)
+	if err != nil {
+		t.Fatalf("listen scanned PDF with local OCR: %v", err)
+	}
+	text := strings.Join(spoken, " ")
+	first, second := strings.Index(text, "Page one OCR is local and readable."), strings.Index(text, "Page two follows page one in order.")
+	if first < 0 || second <= first {
+		t.Fatalf("OCR speech was missing or out of page order: %q", text)
+	}
+	if !strings.Contains(stderr.String(), "Recognized scanned pages 1/2") || !strings.Contains(stderr.String(), "recognized with local OCR") {
+		t.Fatalf("OCR progress or uncertainty was not reported: %q", stderr.String())
+	}
+	requestCount := len(spoken)
+	if err := runWithRuntime(context.Background(), []string{"../../testdata/pdf/scanned.pdf", "--no-play"}, strings.NewReader(""), io.Discard, io.Discard, deps); err != nil {
+		t.Fatalf("rerun scanned PDF from its completed caches: %v", err)
+	}
+	if len(spoken) != requestCount {
+		t.Fatalf("rerun synthesized %d additional segments despite matching streamed audio cache", len(spoken)-requestCount)
 	}
 }
+
+func TestListenStartsScannedPDFPlaybackBeforeLaterPageOCRFinishes(t *testing.T) {
+	for _, name := range []string{"pdftohtml", "pdfimages", "pdftoppm", "tesseract"} {
+		if _, err := exec.LookPath(name); err != nil {
+			t.Skip("Poppler or Tesseract OCR tools are not installed")
+		}
+	}
+	realTesseract, err := exec.LookPath("tesseract")
+	if err != nil {
+		t.Skip("Tesseract OCR is not installed")
+	}
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(root, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
+	marker := filepath.Join(root, "page-two-ocr-finished")
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	wrapper := fmt.Sprintf(`#!/bin/sh
+for argument in "$@"; do
+  case "$argument" in
+    *ocr-page-00002.png)
+      sleep 3
+      "%s" "$@"
+      result=$?
+      : > "%s"
+      exit "$result"
+      ;;
+  esac
+done
+exec "%s" "$@"
+`, realTesseract, marker, realTesseract)
+	if err := os.WriteFile(filepath.Join(bin, "tesseract"), []byte(wrapper), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	player := &earlyOCRTestPlayer{marker: marker}
+	deps := runtimeDeps{
+		startSynth: func(context.Context, kokoro.Options) (speech.Synthesizer, error) { return earlyOCRTestSynth{t: t}, nil },
+		newPlayer:  func(playback.MPVOptions) playback.Player { return player },
+	}
+	err = runWithRuntime(context.Background(), []string{"../../testdata/pdf/scanned.pdf"}, strings.NewReader(""), io.Discard, io.Discard, deps)
+	if err != nil {
+		t.Fatalf("listen scanned PDF: %v", err)
+	}
+	if !player.firstAppendBeforeLaterOCR {
+		t.Fatalf("playback did not queue its opening audio before page two OCR completed; queued=%#v", player.items)
+	}
+	if len(player.items) != 2 || player.items[0].Seq != 0 || player.items[1].Seq != 1 {
+		t.Fatalf("streamed playback items = %#v, want ordered page segments 0, 1", player.items)
+	}
+}
+
+type earlyOCRTestPlayer struct {
+	marker                    string
+	items                     []playback.Item
+	firstAppendBeforeLaterOCR bool
+}
+
+type earlyOCRTestSynth struct{ t *testing.T }
+
+func (earlyOCRTestSynth) ID() string { return kokoro.EngineID }
+func (synth earlyOCRTestSynth) Synthesize(ctx context.Context, request speech.Request) (speech.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return speech.Result{}, err
+	}
+	writeSmallWAV(synth.t, request.Output)
+	duration, err := speech.ValidateWAV(request.Output)
+	if err != nil {
+		return speech.Result{}, err
+	}
+	return speech.Result{SegmentID: request.Segment.ID, Seq: request.Segment.Seq, Path: request.Output, Duration: duration}, nil
+}
+func (earlyOCRTestSynth) Close() error { return nil }
+
+func (*earlyOCRTestPlayer) Start(context.Context) error { return nil }
+func (p *earlyOCRTestPlayer) Append(ctx context.Context, item playback.Item) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if len(p.items) == 0 {
+		_, err := os.Stat(p.marker)
+		p.firstAppendBeforeLaterOCR = errors.Is(err, os.ErrNotExist)
+	}
+	p.items = append(p.items, item)
+	return nil
+}
+func (p *earlyOCRTestPlayer) Position(context.Context) (uint64, time.Duration, error) {
+	if len(p.items) == 0 {
+		return 0, 0, errors.New("no audio is queued")
+	}
+	return p.items[0].Seq, 0, nil
+}
+func (*earlyOCRTestPlayer) Wait(context.Context) error { return nil }
+func (*earlyOCRTestPlayer) Close() error               { return nil }

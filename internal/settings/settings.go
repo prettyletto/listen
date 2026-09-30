@@ -21,6 +21,7 @@ type Config struct {
 	Version       int               `json:"config_version"`
 	SetupComplete bool              `json:"setup_complete"`
 	Speech        SpeechConfig      `json:"speech"`
+	OCRLanguages  string            `json:"ocr_languages"`
 	Voices        map[string]string `json:"voices"`
 	CloudPolicy   string            `json:"cloud_policy"`
 	CloudProvider string            `json:"cloud_provider"`
@@ -36,6 +37,7 @@ func Defaults() Config {
 	return Config{
 		Version:       ConfigVersion,
 		Speech:        SpeechConfig{DefaultVoice: "af_heart", DefaultSpeed: 1},
+		OCRLanguages:  "eng",
 		Voices:        map[string]string{},
 		CloudPolicy:   "ask",
 		CloudProvider: "openai",
@@ -89,6 +91,9 @@ func Validate(config Config) error {
 	if config.Speech.DefaultSpeed < 0.5 || config.Speech.DefaultSpeed > 2 || config.Speech.DefaultSpeed != config.Speech.DefaultSpeed {
 		return errors.New("default speech speed must be between 0.5 and 2.0")
 	}
+	if err := ValidateOCRLanguages(config.OCRLanguages); err != nil {
+		return err
+	}
 	switch config.CloudPolicy {
 	case "ask", "never", "allowed":
 	default:
@@ -105,6 +110,28 @@ func Validate(config Config) error {
 		if !ok || voice.Locale != locale {
 			return fmt.Errorf("voice %q is not available for locale %q", voiceID, locale)
 		}
+	}
+	return nil
+}
+
+// ValidateOCRLanguages accepts Tesseract language IDs joined with '+', as
+// accepted by Tesseract's -l option. Availability is checked when OCR runs.
+func ValidateOCRLanguages(languages string) error {
+	parts := strings.Split(languages, "+")
+	if len(parts) == 0 || len(parts) > 8 {
+		return errors.New("OCR languages must contain between one and eight Tesseract language IDs")
+	}
+	seen := make(map[string]bool, len(parts))
+	for _, part := range parts {
+		if part == "" || len(part) > 64 || seen[part] {
+			return errors.New("OCR languages must be unique Tesseract IDs joined with '+', such as eng+por")
+		}
+		for _, char := range part {
+			if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '_' {
+				return errors.New("OCR languages must be Tesseract language IDs joined with '+', such as eng+por")
+			}
+		}
+		seen[part] = true
 	}
 	return nil
 }
@@ -144,6 +171,9 @@ func mergeDefaults(config Config) Config {
 	}
 	if config.Speech.DefaultSpeed == 0 {
 		config.Speech.DefaultSpeed = defaults.Speech.DefaultSpeed
+	}
+	if config.OCRLanguages == "" {
+		config.OCRLanguages = defaults.OCRLanguages
 	}
 	if config.Voices == nil {
 		config.Voices = make(map[string]string, len(defaults.Voices))

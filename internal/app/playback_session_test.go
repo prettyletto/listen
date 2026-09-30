@@ -98,7 +98,7 @@ func TestPlaybackNextChapterCancelsCurrentStreamAndRestartsAtChapterBoundary(t *
 		report, stopped, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
 			listenOptions{playbackSpeed: 1}, "Example Book", plan,
 			playerui.StartPoint{StartIndex: 0, StartSeq: 0, ChapterIndex: 0}, chapters,
-			goSynth, nil, pipeline.StreamOptions{StartupBuffer: time.Nanosecond}, nil, session.State{}, nil)
+			goSynth, nil, pipeline.StreamOptions{StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, nil)
 		result <- struct {
 			report  pipeline.StreamReport
 			stopped bool
@@ -199,7 +199,7 @@ func TestPlaybackWaitsForReadyAudioBeforeSeekingAndResumes(t *testing.T) {
 		_, stopped, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
 			listenOptions{playbackSpeed: 1}, "Example Book", plan,
 			playerui.StartPoint{StartIndex: 0, StartSeq: 0, ChapterIndex: 0}, chapters,
-			synth, nil, pipeline.StreamOptions{Workers: 1, StartupBuffer: time.Nanosecond}, nil, session.State{}, nil)
+			synth, nil, pipeline.StreamOptions{Workers: 1, StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, nil)
 		result <- struct {
 			stopped bool
 			err     error
@@ -237,6 +237,68 @@ func TestPlaybackWaitsForReadyAudioBeforeSeekingAndResumes(t *testing.T) {
 		t.Fatal("stopping after buffered seek did not cancel playback")
 	}
 }
+
+func TestLivePlaybackFinishesQueuedAudioBeforeReportingLaterPageError(t *testing.T) {
+	pageErr := errors.New("later PDF page OCR failed")
+	player := &drainingErrorPlayer{waiting: make(chan struct{}), release: make(chan struct{})}
+	deps := runtimeDeps{
+		interactivePlayback: func(io.Reader, io.Writer) bool { return false },
+		newPlayer:           func(playback.MPVOptions) playback.Player { return player },
+	}
+	plan := segment.Plan{DocumentID: "pdf", Segments: []segment.Segment{{ID: "pending", Seq: 0}}}
+	liveProducer := func(ctx context.Context, emit func(segment.Segment) error, _ func() error, _ func(string)) error {
+		if err := emit(segment.Segment{ID: "opening", Seq: 0, SpokenText: "opening page"}); err != nil {
+			return err
+		}
+		return pageErr
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
+			listenOptions{playbackSpeed: 1}, "Scanned PDF", plan,
+			playerui.StartPoint{StartIndex: 0, StartSeq: 0},
+			[]playerui.Chapter{{ID: "pdf", Title: "Reading order", StartIndex: 0, StartSeq: 0}},
+			&testkit.FakeSynthesizer{Duration: time.Second}, nil,
+			pipeline.StreamOptions{StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, liveProducer)
+		done <- err
+	}()
+	awaitSignal(t, player.waiting, "ready audio drain")
+	select {
+	case err := <-done:
+		t.Fatalf("playback reported the OCR error before ready audio drained: %v", err)
+	default:
+	}
+	close(player.release)
+	select {
+	case err := <-done:
+		if !errors.Is(err, pageErr) {
+			t.Fatalf("playback error = %v, want the later page OCR failure", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("playback did not report the OCR error after audio drained")
+	}
+}
+
+type drainingErrorPlayer struct {
+	waiting chan struct{}
+	release chan struct{}
+}
+
+func (*drainingErrorPlayer) Start(context.Context) error                       { return nil }
+func (*drainingErrorPlayer) Append(ctx context.Context, _ playback.Item) error { return ctx.Err() }
+func (*drainingErrorPlayer) Position(context.Context) (uint64, time.Duration, error) {
+	return 0, 0, nil
+}
+func (p *drainingErrorPlayer) Wait(ctx context.Context) error {
+	close(p.waiting)
+	select {
+	case <-p.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+func (*drainingErrorPlayer) Close() error { return nil }
 
 func awaitSignal(t *testing.T, signal <-chan struct{}, description string) {
 	t.Helper()

@@ -61,6 +61,9 @@ func PlanDocument(doc *domain.Document, options Options) (Plan, error) {
 		if text == "" {
 			continue
 		}
+		if doc.Format == domain.FormatPDF && current != nil && current.source.Page != block.Source.Page {
+			flush()
+		}
 		unit := units[block.Seq]
 		parts := splitBlock(block, text, options.MaxWords)
 		for _, part := range parts {
@@ -118,13 +121,10 @@ func blockUnits(doc *domain.Document) map[uint64]blockUnit {
 		if unitID == "" {
 			unitID = defaultID
 		}
-		start := node.StartBlock
-		end := node.EndBlockExclusive
-		if end > uint64(len(doc.Blocks)) {
-			end = uint64(len(doc.Blocks))
-		}
-		for seq := start; seq < end; seq++ {
-			units[seq] = blockUnit{id: unitID, path: append([]string(nil), path...)}
+		for _, block := range doc.Blocks {
+			if block.Seq >= node.StartBlock && block.Seq < node.EndBlockExclusive {
+				units[block.Seq] = blockUnit{id: unitID, path: append([]string(nil), path...)}
+			}
 		}
 		for _, child := range node.Children {
 			visit(child, path, unitID)
@@ -216,6 +216,7 @@ type segmentBuilder struct {
 	kind        Kind
 	lastBlock   uint64
 	blocks      []uint64
+	blockIDs    []string
 	source      domain.SourceRef
 }
 
@@ -223,6 +224,7 @@ func (b *segmentBuilder) add(text, separator string, block domain.Block) {
 	b.text += separator + text
 	if len(b.blocks) == 0 || b.blocks[len(b.blocks)-1] != block.Seq {
 		b.blocks = append(b.blocks, block.Seq)
+		b.blockIDs = append(b.blockIDs, block.ID)
 	}
 	b.lastBlock = block.Seq
 	if b.source.Path == "" {
@@ -232,12 +234,7 @@ func (b *segmentBuilder) add(text, separator string, block domain.Block) {
 
 func (b *segmentBuilder) segment(doc *domain.Document, seq uint64) Segment {
 	text := strings.TrimSpace(b.text)
-	ids := make([]string, 0, len(b.blocks))
-	for _, blockSeq := range b.blocks {
-		if blockSeq < uint64(len(doc.Blocks)) {
-			ids = append(ids, doc.Blocks[blockSeq].ID)
-		}
-	}
+	ids := append([]string(nil), b.blockIDs...)
 	textHash := sha256.Sum256([]byte(text))
 	identity, _ := json.Marshal(struct {
 		Version string

@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prettyletto/listen/internal/cache"
 	"github.com/prettyletto/listen/internal/domain"
+	"github.com/prettyletto/listen/internal/segment"
 	"github.com/prettyletto/listen/internal/source"
 )
 
@@ -29,6 +31,19 @@ type goldenBlock struct {
 type goldenDocument struct {
 	Format domain.Format `json:"format"`
 	Blocks []goldenBlock `json:"blocks"`
+}
+
+func TestOCRLanguageListValidation(t *testing.T) {
+	for _, languages := range []string{"eng", "eng+por", "chi_sim+chi_tra"} {
+		if err := validateLanguageList(languages); err != nil {
+			t.Errorf("validateLanguageList(%q): %v", languages, err)
+		}
+	}
+	for _, languages := range []string{"", "eng+", "+eng", "eng+eng", "eng por", strings.Repeat("a", 65), "a+b+c+d+e+f+g+h+i"} {
+		if err := validateLanguageList(languages); err == nil {
+			t.Errorf("validateLanguageList(%q) accepted an invalid language list", languages)
+		}
+	}
 }
 
 func TestPDFBornDigitalFixtureMatchesGolden(t *testing.T) {
@@ -128,16 +143,92 @@ func TestNestedPDFBookmarksKeepContainedBlockRanges(t *testing.T) {
 	}
 }
 
-func TestScannedPDFNeedsOCRInsteadOfReturningEmptyText(t *testing.T) {
+func TestScannedPDFFixtureIsOCRedInPageOrder(t *testing.T) {
 	requirePDFTools(t)
+	requireTesseract(t)
 	path := filepath.Join("..", "..", "..", "testdata", "pdf", "scanned.pdf")
 	imagesBefore, err := filepath.Glob(filepath.Join(filepath.Dir(path), "scanned-*.png"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = NewParser().Parse(context.Background(), source.Input{Name: "scanned.pdf", Path: path})
-	if !errors.Is(err, ErrNeedsOCR) {
-		t.Fatalf("got %v, want ErrNeedsOCR", err)
+	doc, err := NewParser().Parse(context.Background(), source.Input{Name: "scanned.pdf", Path: path})
+	if err != nil {
+		t.Fatalf("parse scanned PDF with local OCR: %v", err)
+	}
+	var text []string
+	for _, block := range doc.Blocks {
+		text = append(text, block.Text)
+	}
+	joined := strings.Join(text, " ")
+	if !strings.Contains(joined, "Page one OCR is local and readable.") || !strings.Contains(joined, "Page two follows page one in order.") {
+		t.Fatalf("recognized page text was missing or out of order: %q", joined)
+	}
+	if doc.Blocks[0].Source.Page != 1 || doc.Blocks[len(doc.Blocks)-1].Source.Page != 2 {
+		t.Fatalf("OCR blocks lost their source page references: %#v", doc.Blocks)
+	}
+	if !strings.Contains(strings.Join(doc.Warnings, " "), "recognized with local OCR") {
+		t.Fatalf("document did not explain OCR uncertainty: %#v", doc.Warnings)
+	}
+	actual, err := json.MarshalIndent(goldenFrom(doc), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual = append(actual, '\n')
+	goldenPath := filepath.Join("..", "..", "..", "testdata", "expected", "pdf", "scanned.json")
+	if os.Getenv("UPDATE_PDF_GOLDEN") == "1" {
+		if err := os.MkdirAll(filepath.Dir(goldenPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(goldenPath, actual, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expected, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("read scanned-PDF golden %q: %v (set UPDATE_PDF_GOLDEN=1 after reviewing the parser output)", goldenPath, err)
+	}
+	if !bytes.Equal(actual, expected) {
+		t.Fatalf("parsed scanned PDF differs from %s; set UPDATE_PDF_GOLDEN=1 only after reviewing the OCR output", goldenPath)
+	}
+	book, err := NewParser().Prepare(context.Background(), source.Input{Name: "scanned.pdf", Path: path}, OCRConfig{})
+	if err != nil {
+		t.Fatalf("prepare scanned PDF page stream: %v", err)
+	}
+	var streamed []segment.Segment
+	err = book.StreamPages(context.Background(), func(page PageResult) error {
+		for index, block := range page.Document.Blocks {
+			if block.Seq != uint64(index) {
+				return errors.New("page document block sequences are not page-local")
+			}
+		}
+		if !rangeInvariants(page.Document.Outline, uint64(len(page.Document.Blocks))) {
+			return errors.New("page document outline ranges are not page-local")
+		}
+		pagePlan, err := segment.PlanDocument(&page.Document, segment.Options{})
+		if err != nil {
+			return err
+		}
+		for _, item := range pagePlan.Segments {
+			item.Seq = uint64(len(streamed))
+			streamed = append(streamed, item)
+		}
+		return nil
+	})
+	book.Close()
+	if err != nil {
+		t.Fatalf("stream scanned PDF segments: %v", err)
+	}
+	fullPlan, err := segment.PlanDocument(doc, segment.Options{})
+	if err != nil {
+		t.Fatalf("plan complete scanned PDF: %v", err)
+	}
+	if len(streamed) != len(fullPlan.Segments) {
+		t.Fatalf("streamed segment count = %d, complete plan count = %d", len(streamed), len(fullPlan.Segments))
+	}
+	for index := range streamed {
+		if streamed[index].ID != fullPlan.Segments[index].ID || streamed[index].Seq != fullPlan.Segments[index].Seq || streamed[index].SourceText != fullPlan.Segments[index].SourceText || streamed[index].MajorUnitID != fullPlan.Segments[index].MajorUnitID || !reflect.DeepEqual(streamed[index].SectionPath, fullPlan.Segments[index].SectionPath) {
+			t.Fatalf("page-stream segment %d differs from the complete PDF plan:\nstreamed=%#v\ncomplete=%#v", index, streamed[index], fullPlan.Segments[index])
+		}
 	}
 	imagesAfter, err := filepath.Glob(filepath.Join(filepath.Dir(path), "scanned-*.png"))
 	if err != nil {
@@ -145,6 +236,74 @@ func TestScannedPDFNeedsOCRInsteadOfReturningEmptyText(t *testing.T) {
 	}
 	if !reflect.DeepEqual(imagesAfter, imagesBefore) {
 		t.Fatalf("PDF parsing left extracted images beside the source: %#v", imagesAfter)
+	}
+}
+
+func TestScannedPDFPageStreamUsesAtomicPageOCRCache(t *testing.T) {
+	requirePDFTools(t)
+	requireTesseract(t)
+	path := filepath.Join("..", "..", "..", "testdata", "pdf", "scanned.pdf")
+	store, err := cache.NewFileStore(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	interrupted := errors.New("test interruption after first OCR page")
+	for pass := 0; pass < 3; pass++ {
+		var progress []OCRProgress
+		book, err := NewParser().Prepare(context.Background(), source.Input{Name: "scanned.pdf", Path: path}, OCRConfig{
+			Cache: store, Languages: "eng", OnProgress: func(value OCRProgress) { progress = append(progress, value) },
+		})
+		if err != nil {
+			t.Fatalf("prepare scanned PDF: %v", err)
+		}
+		var pages []PageResult
+		err = book.StreamPages(context.Background(), func(page PageResult) error {
+			pages = append(pages, page)
+			if pass == 0 {
+				return interrupted
+			}
+			return nil
+		})
+		complete, hasComplete := book.CompleteDocument()
+		book.Close()
+		if pass == 0 && !errors.Is(err, interrupted) {
+			t.Fatalf("partial OCR pass error = %v, want injected interruption", err)
+		}
+		if pass > 0 && err != nil {
+			t.Fatalf("stream scanned PDF pages: %v", err)
+		}
+		if hasComplete != (pass > 0) || (hasComplete && len(complete.Blocks) == 0) {
+			t.Fatalf("complete document availability = %v, document=%#v after pass %d", hasComplete, complete, pass)
+		}
+		wantPages := 2
+		if pass == 0 {
+			wantPages = 1
+		}
+		if len(pages) != wantPages || pages[0].Page != 1 || (wantPages == 2 && pages[1].Page != 2) {
+			t.Fatalf("streamed pages = %#v, want source order 1, 2", pages)
+		}
+		if len(progress) != wantPages {
+			t.Fatalf("OCR progress = %#v, want %d completed pages", progress, wantPages)
+		}
+		if pass == 0 && progress[0].CacheHit {
+			t.Fatalf("first OCR pass unexpectedly hit page cache: %#v", progress)
+		}
+		if pass == 1 && (!progress[0].CacheHit || progress[1].CacheHit) {
+			t.Fatalf("resumed OCR did not reuse completed first page only: %#v", progress)
+		}
+		if pass == 2 && (!progress[0].CacheHit || !progress[1].CacheHit) {
+			t.Fatalf("second OCR pass did not reuse completed page results: %#v", progress)
+		}
+	}
+}
+
+func requireTesseract(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("tesseract"); err != nil {
+		t.Skip("Tesseract OCR is not installed")
+	}
+	if _, err := exec.LookPath("pdftoppm"); err != nil {
+		t.Skip("Poppler pdftoppm is not installed")
 	}
 }
 

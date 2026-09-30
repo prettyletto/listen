@@ -229,6 +229,7 @@ func TestVoiceAndConfigCommandsExposeAndPersistPreferences(t *testing.T) {
 	for _, command := range [][]string{
 		{"config", "set", "voice", "pt-BR", "pf_dora"},
 		{"config", "set", "speed", "1.25"},
+		{"config", "set", "ocr-languages", "eng+por"},
 		{"config", "set", "cloud-policy", "never"},
 		{"config", "set", "cloud-provider", "openai"},
 		{"config", "set", "cloud-model", "gpt-test-model"},
@@ -242,14 +243,14 @@ func TestVoiceAndConfigCommandsExposeAndPersistPreferences(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("config found=%v err=%v", found, err)
 	}
-	if config.Voices["pt-BR"] != "pf_dora" || config.Speech.DefaultSpeed != 1.25 || config.CloudPolicy != "never" || config.CloudProvider != "openai" || config.CloudModel != "gpt-test-model" {
+	if config.Voices["pt-BR"] != "pf_dora" || config.Speech.DefaultSpeed != 1.25 || config.OCRLanguages != "eng+por" || config.CloudPolicy != "never" || config.CloudProvider != "openai" || config.CloudModel != "gpt-test-model" {
 		t.Fatalf("updated preferences = %#v", config)
 	}
 	stdout.Reset()
 	if err := runWithRuntime(context.Background(), []string{"config"}, nil, &stdout, io.Discard, runtimeDeps{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "\"default_speed\": 1.25") || !strings.Contains(stdout.String(), "\"pt-BR\": \"pf_dora\"") || strings.Contains(stdout.String(), "OPENAI_API_KEY") {
+	if !strings.Contains(stdout.String(), "\"default_speed\": 1.25") || !strings.Contains(stdout.String(), "\"ocr_languages\": \"eng+por\"") || !strings.Contains(stdout.String(), "\"pt-BR\": \"pf_dora\"") || strings.Contains(stdout.String(), "OPENAI_API_KEY") {
 		t.Fatalf("config view = %q", stdout.String())
 	}
 }

@@ -29,6 +29,7 @@ findings in `docs/IMPLEMENTATION_PROGRESS.md`.
 | 10 | Geometry/order reconstruction, confidence reporting, scanned-PDF honesty, corpus coverage |
 | 11 | Ignore rules, deterministic ordering, document composition, source traceability |
 | 12 | Go AST narration quality, spoken signatures/comments, `--code` opt-in behavior |
+| 13 | Tesseract setup failures, page-order fidelity, progress, atomic OCR resume, early playback, language/quality honesty |
 
 Slice exit criteria include reviewer approval. A slice with unresolved blocking
 findings is not complete, even if its automated checks pass.
@@ -268,3 +269,34 @@ Exit: the Go golden fixture demonstrates spoken package/import summaries,
 type and function signatures, doc comments, and control-flow narration. The
 CLI flag selects this parser only when requested, and generated speech uses
 the shared reader pipeline and cache.
+
+---
+
+## Slice 13 — local OCR and streamed scanned-PDF playback
+
+**Scenario:** `listen scanned.pdf` recognizes pages locally, starts playback
+before OCR reaches the end of the book, and reuses completed OCR/audio after
+interruption.
+
+Implement:
+
+- optional local Tesseract OCR with configurable installed language IDs;
+- scan-like page detection within mixed born-digital/scanned PDFs;
+- geometry-aware TSV conversion into the existing PDF Document IR;
+- atomic page-level OCR cache keyed by source, engine, language, resolution,
+  page, and parser versions;
+- an ordered page-to-segment producer connected to the existing speech/cache/
+  player pipeline;
+- progress and clear degraded-confidence/tool/language errors;
+- full-book OCR progress for `--no-play`, `--export`, and translated reading;
+- golden OCR fixture and cancellation/cache-resume coverage.
+
+Exit:
+
+- the opening audio is queued before a deliberately delayed later page finishes
+  OCR;
+- streamed and complete plans use the same stable segment IDs and ordering;
+- interruption preserves completed page OCR and reruns reuse it;
+- page results remain local and uncertainty is shown to the user;
+- `go test ./...` and `go vet ./...` pass;
+- the independent Slice 13 reviewer approves.

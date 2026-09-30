@@ -347,7 +347,7 @@ PDF is explicitly best-effort. A PDF describes page painting, not necessarily lo
 2. PDF document outline/bookmarks.
 3. Positioned text + typography/layout analysis.
 4. Plain extracted text heuristics.
-5. OCR only in a later optional capability.
+5. Local OCR for pages that appear scan-like and lack enough positioned text.
 
 ## Reading-order reconstruction
 
@@ -375,9 +375,27 @@ Candidate features:
 
 Infer heading classes globally. For example, 18pt bold centered lines occurring 20 times are stronger evidence than one anomalous large line.
 
-## Scanned PDF detection
+## Scanned PDF detection and local OCR
 
-If pages contain almost no extractable text but substantial raster content, mark `needs_ocr`. Do not return garbage as if parsing succeeded. v1 can provide an actionable error/diagnostic; OCR is a later adapter.
+If a page contains almost no extractable words but substantial raster-image
+coverage, classify that page as scan-like. Render it locally with Poppler and
+run Tesseract with the configured language data. TSV word geometry feeds the
+same layout and block reconstruction used by born-digital PDF text. OCR output
+is cached atomically per page and emitted in source order. Text extraction
+continues for pages that already have a usable text layer, so mixed books do
+not need a separate path.
+
+The default OCR language is English (`eng`). Users may select installed
+Tesseract language IDs such as `eng+por`; installed data is checked before OCR
+starts. Listen reports low-confidence pages and pages where Tesseract found no
+words. A page that the scan detector misses or that Tesseract misreads remains
+a best-effort limitation. Do not imply that OCR text is exact.
+
+For normal playback, recognized page segments feed the ordered speech pipeline
+while later pages are still being recognized. The page sequence is stable, but
+the complete outline is not yet available to the interactive chapter picker.
+Explicit full processing (`--no-play`, `--export`, or translated reading)
+reports page progress and completes OCR before audio generation or playback.
 
 ---
 
@@ -437,6 +455,6 @@ At minimum include fixtures for:
 - bookmarks;
 - two-column text;
 - repeated headers/footers;
-- no-text scanned file detection.
+- scanned-page detection and local OCR reading order.
 
 No parser is “done” based on one happy-path sample.

@@ -40,6 +40,13 @@ type StreamOptions struct {
 	OnBufferHealth        func(float64, time.Time)
 }
 
+// SegmentProducer emits an ordered sequence of stable segments. Producers may
+// block between segments while upstream work such as page OCR completes. A
+// sourceBoundary signal marks the end of a logical source unit (such as a PDF
+// page), allowing short opening units to start playback without waiting for
+// later source work.
+type SegmentProducer func(ctx context.Context, emit func(segment.Segment) error, sourceBoundary func() error) error
+
 const defaultBufferHealthInterval = time.Second
 
 type StreamReport struct {
@@ -81,13 +88,68 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 			return report, err
 		}
 	}
-	resumeOffset := options.ResumeOffset
 	firstSeq := plan.Segments[0].Seq
 	for index, item := range plan.Segments {
 		if item.Seq != firstSeq+uint64(index) {
 			return report, fmt.Errorf("segment plan is not contiguous at sequence %d", item.Seq)
 		}
 	}
+	produce := func(produceCtx context.Context, emit func(segment.Segment) error, _ func() error) error {
+		for _, item := range plan.Segments {
+			if err := emit(item); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return streamFrom(ctx, plan, firstSeq, len(plan.Segments), produce, synthesizer, audioCache, player, options)
+}
+
+// StreamFrom runs the ordered speech stages from a live segment producer. The
+// stream starts playback as soon as its normal startup buffer is ready, even
+// when the producer is still discovering later segments. Live translation is
+// deliberately unsupported until it can preserve the same ordered guarantees.
+func StreamFrom(
+	ctx context.Context,
+	firstSequence uint64,
+	produce SegmentProducer,
+	synthesizer speech.Synthesizer,
+	audioCache SpeechCache,
+	player playback.Player,
+	options StreamOptions,
+) (StreamReport, error) {
+	if ctx == nil {
+		return StreamReport{}, errors.New("stream requires a context")
+	}
+	if produce == nil {
+		return StreamReport{}, errors.New("stream requires a segment producer")
+	}
+	if synthesizer == nil {
+		return StreamReport{}, errors.New("stream requires a synthesizer")
+	}
+	if options.Translator != nil {
+		return StreamReport{}, errors.New("live segment streams do not support translation")
+	}
+	options = normalizeStreamOptions(options)
+	return streamFrom(ctx, segment.Plan{}, firstSequence, 0, produce, synthesizer, audioCache, player, options)
+}
+
+func streamFrom(
+	ctx context.Context,
+	plan segment.Plan,
+	firstSeq uint64,
+	total int,
+	produce SegmentProducer,
+	synthesizer speech.Synthesizer,
+	audioCache SpeechCache,
+	player playback.Player,
+	options StreamOptions,
+) (StreamReport, error) {
+	var report StreamReport
+	if err := ctx.Err(); err != nil {
+		return report, err
+	}
+	resumeOffset := options.ResumeOffset
 
 	workCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -99,7 +161,8 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 	}()
 	jobs := make(chan segment.Segment, options.QueueCapacity)
 	completed := make(chan synthesis, options.QueueCapacity)
-	producerDone := make(chan struct{})
+	producerDone := make(chan producerCompletion, 1)
+	sourceBoundaries := make(chan uint64, 1)
 	var translationStats translationCounters
 	var workers sync.WaitGroup
 	for i := 0; i < options.Workers; i++ {
@@ -118,33 +181,51 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 	}
 	if options.Translator == nil {
 		go func() {
-			defer close(producerDone)
 			defer close(jobs)
-			for _, item := range plan.Segments {
+			nextSequence := firstSeq
+			err := produce(workCtx, func(item segment.Segment) error {
+				if item.Seq != nextSequence {
+					return fmt.Errorf("segment producer is not contiguous at sequence %d", nextSequence)
+				}
+				nextSequence++
 				select {
 				case jobs <- item:
+					return nil
 				case <-workCtx.Done():
-					return
+					return workCtx.Err()
 				}
-			}
+			}, func() error {
+				if nextSequence == firstSeq {
+					return nil
+				}
+				select {
+				case sourceBoundaries <- nextSequence:
+					return nil
+				case <-workCtx.Done():
+					return workCtx.Err()
+				}
+			})
+			producerDone <- producerCompletion{nextSequence: nextSequence, err: err}
 		}()
 	} else {
 		go func() {
-			defer close(producerDone)
+			defer func() { producerDone <- producerCompletion{nextSequence: firstSeq + uint64(len(plan.Segments))} }()
 			translateToSpeechJobs(workCtx, cancel, plan.Segments, jobs, completed, options, &translationStats)
 		}()
 	}
 	go func() {
 		workers.Wait()
-		<-producerDone
 		close(completed)
 	}()
 
 	reorder := NewReorderBuffer[orderedSpeech](firstSeq)
 	var firstErr error
+	var sourceResult producerCompletion
+	sourceFinished := false
 	var buffered []speech.Result
 	var bufferedDuration time.Duration
 	started := false
+	var pendingBoundary uint64
 	var playbackStartedAt time.Time
 	var queuedItems []playback.Item
 	var queuedDuration time.Duration
@@ -156,15 +237,53 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 		healthTicks = healthTicker.C
 		defer healthTicker.Stop()
 	}
+	startBuffered := func() error {
+		if player == nil || started || len(buffered) == 0 {
+			return nil
+		}
+		if err := startAndAppend(ctx, workCtx, player, buffered, &report, options.OnPlaybackStart, resumeOffset); err != nil {
+			return err
+		}
+		started = true
+		playbackStartedAt = time.Now()
+		for _, queued := range buffered {
+			queuedItems = append(queuedItems, playback.Item{Seq: queued.Seq, Path: queued.Path, Duration: queued.Duration})
+		}
+		queuedDuration = bufferedDuration - initialResumeOffset
+		if queuedDuration < 0 {
+			queuedDuration = 0
+		}
+		observeBufferHealth(workCtx, player, queuedItems, queuedDuration, initialResumeOffset, playbackStartedAt, options.OnBufferHealth)
+		buffered = nil
+		bufferedDuration = 0
+		resumeOffset = 0
+		pendingBoundary = 0
+		return nil
+	}
 	for completedCh := (<-chan synthesis)(completed); completedCh != nil; {
 		select {
 		case <-healthTicks:
 			if started {
 				observeBufferHealth(workCtx, player, queuedItems, queuedDuration, initialResumeOffset, playbackStartedAt, options.OnBufferHealth)
 			}
+		case boundary := <-sourceBoundaries:
+			if player != nil && !started && pendingBoundary == 0 && boundary > firstSeq {
+				pendingBoundary = boundary
+			}
+			if pendingBoundary != 0 && len(buffered) > 0 && buffered[len(buffered)-1].Seq+1 >= pendingBoundary {
+				if err := startBuffered(); err != nil {
+					firstErr = err
+					cancel()
+				}
+			}
 		case outcome, ok := <-completedCh:
 			if !ok {
 				completedCh = nil
+				sourceResult = <-producerDone
+				sourceFinished = true
+				if sourceResult.err != nil && firstErr == nil && !errors.Is(sourceResult.err, context.Canceled) && !errors.Is(sourceResult.err, context.DeadlineExceeded) {
+					firstErr = fmt.Errorf("produce segments: %w", sourceResult.err)
+				}
 				continue
 			}
 			if outcome.err != nil {
@@ -187,7 +306,7 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 				result := ordered.result
 				report.Results = append(report.Results, result)
 				if options.OnProgress != nil {
-					options.OnProgress(report.Generated+report.Reused+1, len(plan.Segments))
+					options.OnProgress(report.Generated+report.Reused+1, total)
 				}
 				if ordered.cached {
 					report.Reused++
@@ -212,24 +331,12 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 				}
 				buffered = append(buffered, result)
 				bufferedDuration += result.Duration
-				if bufferedDuration >= options.StartupBuffer {
-					if err := startAndAppend(ctx, workCtx, player, buffered, &report, options.OnPlaybackStart, resumeOffset); err != nil {
+				if bufferedDuration >= options.StartupBuffer || (pendingBoundary != 0 && result.Seq+1 >= pendingBoundary) {
+					if err := startBuffered(); err != nil {
 						firstErr = err
 						cancel()
 						break
 					}
-					started = true
-					playbackStartedAt = time.Now()
-					for _, queued := range buffered {
-						queuedItems = append(queuedItems, playback.Item{Seq: queued.Seq, Path: queued.Path, Duration: queued.Duration})
-					}
-					queuedDuration = bufferedDuration - initialResumeOffset
-					if queuedDuration < 0 {
-						queuedDuration = 0
-					}
-					observeBufferHealth(workCtx, player, queuedItems, queuedDuration, initialResumeOffset, playbackStartedAt, options.OnBufferHealth)
-					buffered = nil
-					resumeOffset = 0
 				}
 			}
 		}
@@ -240,8 +347,17 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 	if err := ctx.Err(); err != nil {
 		return report, err
 	}
-	if reorder.Next() != firstSeq+uint64(len(plan.Segments)) {
+	if !sourceFinished {
+		return report, errors.New("segment producer did not finish")
+	}
+	if reorder.Next() != sourceResult.nextSequence {
 		return report, fmt.Errorf("audio generation ended before sequence %d was committed", reorder.Next())
+	}
+	if reorder.Next() == firstSeq {
+		return report, errors.New("there is no readable audio to play")
+	}
+	if player != nil && !started && len(buffered) == 0 {
+		return report, errors.New("there is no readable audio to play")
 	}
 	if player != nil && !started {
 		if err := startAndAppend(ctx, ctx, player, buffered, &report, options.OnPlaybackStart, resumeOffset); err != nil {
@@ -261,6 +377,11 @@ func Stream(ctx context.Context, plan segment.Plan, synthesizer speech.Synthesiz
 	report.TranslationReused = translationStats.reused
 	streamSucceeded = true
 	return report, nil
+}
+
+type producerCompletion struct {
+	nextSequence uint64
+	err          error
 }
 
 func normalizeStreamOptions(options StreamOptions) StreamOptions {

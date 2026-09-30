@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,8 @@ type playbackDecision struct {
 	stop        bool
 	err         error
 }
+
+type liveSegmentProducer func(context.Context, func(segment.Segment) error, func() error, func(string)) error
 
 type playerScreen interface {
 	Actions() <-chan playerui.Action
@@ -134,12 +137,19 @@ func runPlayback(
 	sessionStore *session.Store,
 	baseState session.State,
 	uiRef *playerScreen,
+	liveProducer liveSegmentProducer,
 ) (pipeline.StreamReport, bool, error) {
 	var display playerScreen
 	if deps.interactivePlayback(stdin, stderr) {
-		model := playerui.NewPlayer(title, chapters, start.ChapterIndex, len(fullPlan.Segments))
-		model.SetProgress(0, len(fullPlan.Segments)-start.StartIndex)
-		model.SetStatus(chapterPreparationStatus(streamOptions.Translator != nil))
+		total := len(fullPlan.Segments)
+		status := chapterPreparationStatus(streamOptions.Translator != nil)
+		if liveProducer != nil {
+			total = 0
+			status = "Recognizing PDF pages as you listen"
+		}
+		model := playerui.NewPlayer(title, chapters, start.ChapterIndex, total)
+		model.SetProgress(0, max(0, total-start.StartIndex))
+		model.SetStatus(status)
 		var err error
 		display, err = deps.startPlaybackScreen(stdin, stderr, model)
 		if err != nil {
@@ -168,7 +178,7 @@ func runPlayback(
 			Segments:   append([]segment.Segment(nil), fullPlan.Segments[currentIndex:]...),
 		}
 		decision := runPlaybackPass(ctx, stderr, deps, options, fullPlan, currentPlan, currentOffset, currentChapter, chapters,
-			synthesizer, audioCache, streamOptions, sessionStore, baseState, display)
+			synthesizer, audioCache, streamOptions, sessionStore, baseState, display, liveProducer)
 		if decision.err != nil {
 			return decision.report, false, decision.err
 		}
@@ -212,6 +222,7 @@ func runPlaybackPass(
 	sessionStore *session.Store,
 	baseState session.State,
 	display playerScreen,
+	liveProducer liveSegmentProducer,
 ) playbackDecision {
 	streamCtx, cancelStream := context.WithCancel(ctx)
 	defer cancelStream()
@@ -249,7 +260,11 @@ func runPlaybackPass(
 	if display != nil {
 		display.SetChapter(currentChapter)
 		display.SetPaused(false)
-		display.SetProgress(0, len(currentPlan.Segments))
+		total := len(currentPlan.Segments)
+		if liveProducer != nil {
+			total = 0
+		}
+		display.SetProgress(0, total)
 	}
 	if progress := streamOptions.OnProgress; progress != nil {
 		runOptions.OnProgress = func(completed, total int) {
@@ -265,11 +280,27 @@ func runPlaybackPass(
 	}
 	streamResults := make(chan streamCompletion, 1)
 	go func() {
-		report, err := pipeline.Stream(streamCtx, currentPlan, synthesizer, audioCache, player, runOptions)
+		var report pipeline.StreamReport
+		var err error
+		if liveProducer != nil {
+			produce := func(produceCtx context.Context, emit func(segment.Segment) error, sourceBoundary func() error) error {
+				return liveProducer(produceCtx, emit, sourceBoundary, func(status string) {
+					if display != nil {
+						display.SetStatus(status)
+					} else {
+						_, _ = fmt.Fprintln(stderr, status)
+					}
+				})
+			}
+			report, err = pipeline.StreamFrom(streamCtx, currentPlan.Segments[0].Seq, produce, synthesizer, audioCache, player, runOptions)
+		} else {
+			report, err = pipeline.Stream(streamCtx, currentPlan, synthesizer, audioCache, player, runOptions)
+		}
 		streamResults <- streamCompletion{report: report, err: err}
 	}()
 	streamRunning := true
 	var streamReport pipeline.StreamReport
+	var deferredStreamErr error
 	var waitResults <-chan error
 	var ticks <-chan time.Time
 	var ticker *time.Ticker
@@ -334,6 +365,20 @@ func runPlaybackPass(
 				if ctx.Err() != nil {
 					return playbackDecision{nextChapter: -1, err: ctx.Err()}
 				}
+				if liveProducer != nil && completion.report.Appended > 0 {
+					streamReport = completion.report
+					deferredStreamErr = completion.err
+					status := "Page recognition stopped · finishing audio that is already ready"
+					if display != nil {
+						display.SetStatus(status)
+					} else {
+						_, _ = fmt.Fprintln(stderr, status)
+					}
+					waitResult := make(chan error, 1)
+					waitResults = waitResult
+					go func() { waitResult <- player.Wait(streamCtx) }()
+					continue
+				}
 				if target, ok := pendingChapterNavigation(actionChannel(display), currentChapter, chapters, len(fullPlan.Segments), chapterActionGracePeriod); ok {
 					cancelStream()
 					return playbackDecision{report: completion.report, nextChapter: target}
@@ -353,6 +398,9 @@ func runPlaybackPass(
 					return playbackDecision{nextChapter: -1, err: ctx.Err()}
 				}
 				return playbackDecision{nextChapter: -1, err: err}
+			}
+			if deferredStreamErr != nil {
+				return playbackDecision{report: streamReport, nextChapter: -1, err: deferredStreamErr}
 			}
 			return playbackDecision{report: streamReport, nextChapter: -1}
 		case action := <-actionChannel(display):
@@ -437,6 +485,10 @@ func runPlaybackPass(
 					display.SetStatus("Skipped back 5 seconds")
 				}
 			case playerui.ActionPrevious, playerui.ActionNext:
+				if liveProducer != nil {
+					display.SetStatus("PDF chapter navigation is unavailable while pages are being recognized")
+					continue
+				}
 				target, valid := chapterTargetForAction(action, currentChapter, chapters, len(fullPlan.Segments))
 				if !valid {
 					if target < 0 {

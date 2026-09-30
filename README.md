@@ -42,13 +42,20 @@ signatures, comments, and recognized control flow.
 
 This repository is an implementation foundation. The Python prototype under `reference/python-prototype/` is the behavioral reference for the existing TTS/cache/section UX; the new architecture is Go-first, with Python limited to long-lived Kokoro and optional local translation inference workers.
 
-Text-based PDFs are supported on a best-effort basis. PDF reading requires
+PDFs are supported on a best-effort basis. PDF reading requires
 Poppler's `pdftohtml` and `pdfimages`; on Arch Linux, install them with
 `sudo pacman -S poppler`.
-`qpdf` is optional and adds PDF bookmark navigation. Scanned PDFs without a
-readable text layer report that OCR is unavailable; `listen` does not run OCR.
-PDFs are limited to 256 MiB, 5,000 pages, bounded extractor output, and two
-minutes per external PDF tool.
+`qpdf` is optional and adds PDF bookmark navigation. Pages that appear scanned
+use local Tesseract OCR when Tesseract and the configured trained language data
+are installed. English is the default; set additional Tesseract language IDs
+with `listen config set ocr-languages eng+por`. Normal playback begins as
+pages are recognized, while `--no-play`, `--export`, and translated reading
+finish OCR first and show page progress. OCR does not upload document text.
+OCR quality depends on print and scan quality, language data, and page layout;
+Listen reports low-confidence and unreadable pages instead of claiming exact
+recognition. Only English currently has a committed OCR fixture. PDFs are
+limited to 256 MiB, 5,000 pages, bounded extractor output, and two minutes per
+external PDF tool.
 
 On Linux x86_64, install `uv`, mpv, and FFmpeg, then run `listen setup`.
 In a terminal, the setup wizard lets you select listening languages and a

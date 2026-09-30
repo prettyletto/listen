@@ -19,6 +19,7 @@ type Stage string
 const (
 	StageStructure   Stage = "structure"
 	StageSegments    Stage = "segments"
+	StageOCR         Stage = "ocr"
 	StageTranslation Stage = "translation"
 	StageSpeech      Stage = "speech"
 	StageSession     Stage = "sessions"
@@ -69,7 +70,7 @@ func (s *FileStore) artifactPath(stage Stage, key string) (string, error) {
 		return "", errors.New("cache store is not initialized")
 	}
 	switch stage {
-	case StageStructure, StageSegments, StageTranslation, StageSpeech, StageSession:
+	case StageStructure, StageSegments, StageOCR, StageTranslation, StageSpeech, StageSession:
 	default:
 		return "", fmt.Errorf("unsupported cache stage %q", stage)
 	}

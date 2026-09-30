@@ -1,0 +1,17 @@
+{
+  "format": "pdf",
+  "blocks": [
+    {
+      "seq": 0,
+      "kind": "paragraph",
+      "text": "Page one OCR is local and readable.",
+      "page": 1
+    },
+    {
+      "seq": 1,
+      "kind": "paragraph",
+      "text": "Page two follows page one in order.",
+      "page": 2
+    }
+  ]
+}

@@ -73,6 +73,9 @@ func lineFromFragments(page int, fragments []rawText) pdfLine {
 }
 
 func looksScanned(page pageLayout) bool {
+	if page.ocr {
+		return false
+	}
 	if page.width <= 0 || page.height <= 0 {
 		return false
 	}
@@ -186,6 +189,12 @@ func consistentMarginPosition(values []float64) bool {
 
 func orderedPageLines(page pageLayout) []pdfLine {
 	lines := append([]pdfLine(nil), page.lines...)
+	if page.ocr {
+		// Tesseract's TSV rows are already emitted in its detected reading
+		// order. Geometry sorting would reverse RTL lines and can interleave
+		// columns that Tesseract separated.
+		return lines
+	}
 	split, found := detectColumnSplit(page, lines)
 	if !found {
 		sortPageLines(lines)

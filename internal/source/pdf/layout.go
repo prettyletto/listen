@@ -46,6 +46,7 @@ type pageLayout struct {
 	raw    []rawText
 	images []pdfImage
 	lines  []pdfLine
+	ocr    bool
 }
 
 func parseLayoutXML(ctx context.Context, data []byte) ([]pageLayout, error) {

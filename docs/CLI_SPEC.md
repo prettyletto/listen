@@ -16,8 +16,9 @@ listen setup --translate en:pt-BR
 
 `<source>` may be a file, directory, or `-` for stdin. File type is inferred
 from content/extension; users do not choose parsers. The reader supports
-UTF-8 plain-text files, Markdown, HTML, EPUB books, text-based PDFs, and
-documentation directories. Go source files are narrated with the explicit
+UTF-8 plain-text files, Markdown, HTML, EPUB books, best-effort PDFs (including
+local OCR for scanned pages when the configured Tesseract data is installed),
+and documentation directories. Go source files are narrated with the explicit
 `--code` option. Directory behavior is specified in
 [`DIRECTORY_SOURCES.md`](DIRECTORY_SOURCES.md).
 
@@ -34,7 +35,9 @@ listen --help
 `listen config` displays preferences. Mutations are explicit, for example
 `listen config set voice pf_dora`, `listen config set voice pt-BR pf_dora`,
 `listen config set speed 1.1`, `listen config set cloud-policy never`, and
-`listen config set cloud-model gpt-5.6-luna`.
+`listen config set cloud-model gpt-5.6-luna`. Set local PDF OCR languages with
+`listen config set ocr-languages eng+por`; the corresponding Tesseract language
+data must already be installed.
 
 ## Optional one-shot overrides
 
@@ -58,7 +61,8 @@ of recognized control flow. Without this flag, source detection keeps its
 normal reader behavior.
 
 `--no-play` generates and caches audio without opening mpv; it is useful for
-automation and validating local speech setup.
+automation and validating local speech setup. For scanned PDFs it completes
+OCR of the book first and reports recognized-page progress.
 
 In an interactive Linux terminal, `listen <book>` opens a start picker when
 the source has multiple playable chapters or major sections. Choose the full
@@ -67,6 +71,17 @@ Starting at a chapter continues through the rest of the book. During playback,
 Space pauses/resumes, Left/Right seeks by five seconds, `p`/`n` changes chapter,
 and `q` or Ctrl-C stops and saves the position. Non-interactive runs do not
 prompt and keep the normal resume behavior.
+
+For normal playback of a scanned PDF, Listen OCRs scan-like pages locally in
+page order and starts speech once the opening audio buffer is ready. OCR
+continues while audio plays. Page progress appears in the player. PDF chapter
+navigation is unavailable during this streamed pass because the complete
+outline is not known yet. Stopping keeps completed OCR pages and audio in the
+cache; starting again reuses them, but streamed PDF playback currently starts
+from the beginning. `--translate` and `--export` finish OCR before translation
+or export generation. English is the default OCR language. Other languages need
+matching local Tesseract trained data, and current OCR quality fixtures cover
+English only. Results vary with scan quality and layout.
 
 `--export [directory]` builds a reusable audiobook bundle without opening
 mpv. `-o <directory>` is its concise form, for example

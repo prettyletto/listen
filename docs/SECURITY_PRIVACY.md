@@ -10,6 +10,10 @@ of the cloud adapter, so the translation pipeline cannot make the request.
 playback probe classifies translation as unsustainable or a local translator
 is unavailable. Model metadata discovery sends no source text.
 
+PDF OCR is local and invokes Poppler and Tesseract subprocesses. Page images,
+recognized text, and OCR cache artifacts stay on the device; OCR never uses the
+cloud-translation policy or contacts a recognition service.
+
 ## Untrusted documents
 
 Treat EPUB/HTML/PDF as untrusted input.

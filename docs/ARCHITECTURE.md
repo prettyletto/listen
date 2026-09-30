@@ -42,6 +42,12 @@ Source
 
 Every source format represents structure differently. If EPUB/Markdown/PDF logic leaks into translation or playback, complexity explodes. All parsers therefore terminate at `domain.Document`.
 
+Scanned PDFs use a page producer that emits page-local `Document` values. Each
+page is segmented by the same planner, then fed into the existing ordered
+speech queue. Stable block IDs make streamed segment identities match the
+complete PDF plan; full-document export and translated processing still build
+the full `Document` before downstream work.
+
 The pipeline only understands:
 
 - ordered blocks;

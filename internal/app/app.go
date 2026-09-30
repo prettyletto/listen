@@ -65,7 +65,7 @@ Commands:
   models                 List available OpenAI translation models
   doctor                 Inspect local runtime and player readiness
 
-Current sources: UTF-8 text files, Markdown files, HTML documents, EPUB books, text-based PDFs, and documentation directories. Go files use --code.
+Current sources: UTF-8 text files, Markdown files, HTML documents, EPUB books, best-effort PDFs (including local OCR for scans), and documentation directories. Go files use --code.
 `
 
 type listenOptions struct {
@@ -361,7 +361,61 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 	if err != nil {
 		return apperr.New("storage_unavailable", "Could not prepare local audio storage.", "Check that your cache directory is writable.", err)
 	}
-	doc, err := parseCachedDocument(ctx, input, manifests, options.code)
+	playbackMode := !options.noPlay && !options.exportAudio
+	terminal := ui.New(stderr)
+	var doc *domain.Document
+	if strings.EqualFold(filepath.Ext(input.Name), ".pdf") && !options.code {
+		var structureKey string
+		var reusable bool
+		structureKey, reusable, err = documentCacheKey(ctx, input, false)
+		if err != nil {
+			return pdfSourceError(ctx, err)
+		}
+		if reusable {
+			structureKey = cache.Key(documentManifestVersion, structureKey, pdfsource.ParserVersion, readerConfig.OCRLanguages)
+			doc, _, err = loadCachedDocument(ctx, manifests, structureKey)
+			if err != nil {
+				return apperr.New("storage_unavailable", "Could not read the saved PDF structure.", "Check that your local cache directory is available.", err)
+			}
+		}
+		if doc == nil {
+			var progressStatus func(string)
+			progressActive := true
+			reportOCRProgress := func(progress pdfsource.OCRProgress) {
+				if !progressActive || (progress.ScannedComplete != 1 && progress.ScannedComplete%10 != 0 && progress.ScannedComplete != progress.ScannedTotal) {
+					return
+				}
+				message := fmt.Sprintf("Recognized scanned pages %d/%d (PDF page %d/%d)", progress.ScannedComplete, progress.ScannedTotal, progress.Page, progress.TotalPages)
+				if progressStatus != nil {
+					progressStatus(message)
+				} else {
+					_ = terminal.Info(message)
+				}
+			}
+			book, prepareErr := pdfsource.NewParser().Prepare(ctx, input, pdfsource.OCRConfig{
+				Cache: manifests, Languages: readerConfig.OCRLanguages, OnProgress: reportOCRProgress,
+			})
+			if prepareErr != nil {
+				return pdfSourceError(ctx, prepareErr)
+			}
+			if playbackMode && options.targetLanguage == "" && book.ScannedPageCount() > 0 {
+				return runScannedPDFPlayback(ctx, stdin, stderr, deps, options, input, userPaths.CacheDir, manifests,
+					structureKey, reusable, book, terminal, &progressStatus, &progressActive)
+			}
+			doc, err = book.Parse(ctx)
+			book.Close()
+			if err != nil {
+				return pdfSourceError(ctx, err)
+			}
+			if reusable {
+				if err := saveCachedDocument(ctx, manifests, structureKey, doc); err != nil {
+					return apperr.New("storage_unavailable", "Could not save the PDF reading structure.", "Check that your local cache directory is writable.", err)
+				}
+			}
+		}
+	} else {
+		doc, err = parseCachedDocument(ctx, input, manifests, options.code)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return interrupted(ctx.Err())
@@ -381,7 +435,7 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 			return apperr.New("source_encoding", "The source is not valid UTF-8 text.", "Save it as UTF-8 and run listen again.", err)
 		case errors.Is(err, textsource.ErrEmptySource):
 			if strings.EqualFold(filepath.Ext(input.Name), ".pdf") {
-				return apperr.New("pdf_no_readable_text", "No readable text was found in this PDF.", "Choose a PDF with an extractable text layer; OCR is not available yet.", err)
+				return apperr.New("pdf_no_readable_text", "No readable text was found in this PDF.", "Choose a PDF with readable text or improve the scan quality and try again.", err)
 			}
 			return apperr.New("source_empty", "The source has no readable text.", "Choose a file that contains text.", err)
 		default:
@@ -389,9 +443,6 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 				return apperr.New("source_empty", "This directory has no readable documentation files.", "Add text or Markdown documents, or check the directory's .gitignore rules.", err)
 			}
 			if strings.EqualFold(filepath.Ext(input.Name), ".pdf") {
-				if errors.Is(err, pdfsource.ErrNeedsOCR) {
-					return apperr.New("pdf_needs_ocr", "This PDF does not contain enough readable text.", "Choose a text-based PDF. Scanned-page OCR is not available yet.", err)
-				}
 				if errors.Is(err, pdfsource.ErrReaderUnavailable) {
 					return apperr.New("pdf_reader_unavailable", "PDF reading is unavailable on this computer.", "Install Poppler utilities, then run listen again.", err)
 				}
@@ -413,6 +464,13 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 				return apperr.New("code_parse_failed", "Could not read this Go source file.", "Check that the file is valid Go source, then run listen again.", err)
 			}
 			return apperr.New("source_read_failed", "Could not read the text source.", "Check that the file is readable and try again.", err)
+		}
+	}
+	if doc != nil && doc.Format == domain.FormatPDF {
+		for _, warning := range doc.Warnings {
+			if err := terminal.Warning(warning); err != nil {
+				return err
+			}
 		}
 	}
 	plan, err := planCachedSegments(ctx, doc, input.Path, manifests)
@@ -444,8 +502,6 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 	streamTranslator := deps.translator
 	planner := viability.NewPlanner(0.25)
 	startupTranslationGenerated := 0
-	playbackMode := !options.noPlay && !options.exportAudio
-	terminal := ui.New(stderr)
 	var translationWarningOnce sync.Once
 	if options.targetLanguage != "" {
 		translationCache, err = translate.NewCache(manifests)
@@ -713,7 +769,7 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 		}
 		var stopped bool
 		report, stopped, err = runPlayback(ctx, stdin, stderr, deps, options, docTitle(doc.Metadata.Title, input.Name), plan,
-			startPoint, chapters, synthesizer, audioCache, streamOptions, sessionStore, baseState, &playbackUI)
+			startPoint, chapters, synthesizer, audioCache, streamOptions, sessionStore, baseState, &playbackUI, nil)
 		if err != nil {
 			return playerError(err)
 		}

@@ -62,7 +62,8 @@ Total full-book generation time is a secondary metric in streaming mode.
 - timeline editor;
 - dubbing/video/subtitles;
 - pronunciation editor UI;
-- OCR as a hard dependency;
+- Tesseract as a mandatory dependency for born-digital documents;
+- claims of universal OCR accuracy across languages and scan conditions;
 - cloud account management dashboard;
 - DRM circumvention;
 - “support every file format” marketing claims.

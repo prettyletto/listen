@@ -16,6 +16,7 @@ $XDG_CACHE_HOME/listen/
   translation/<cache-key>.json
   speech/<cache-key>.wav
   speech/<cache-key>.json
+  ocr/<cache-key>.json
   worker/kokoro-worker-v1.py
   huggingface/...
   setup/health-check.wav   (removed after successful setup)
@@ -34,6 +35,14 @@ $XDG_CONFIG_HOME/listen/config.json
 ### Parsed structure
 
 source content hash + parser/version + relevant parser options.
+
+Scanned-PDF OCR artifacts are cached one page at a time. Their identity
+includes source content/document identity, parser and OCR format versions,
+Tesseract version, language list, render resolution, and page number. Each
+artifact is committed atomically only after Tesseract finishes; cancelling a
+book leaves completed pages reusable. The PDF structure manifest is committed
+after a full parse, so an interrupted live read starts recognition at its
+first page while reusing completed page OCR and audio cache entries.
 
 ### Translation
 
@@ -74,6 +83,10 @@ then polls mpv about once per second. On restart it maps by stable segment ID;
 if the source changed and that ID disappeared, it selects the nearest segment
 in the same major unit or section and resets the offset to the start of that
 segment. A completed session starts from the beginning on the next run.
+
+The current live scanned-PDF path does not yet save or restore a playback
+position after stopping. It starts from the first page again and reuses
+completed OCR and speech cache artifacts.
 
 Parsed structure manifests are keyed by source path, content hash, input
 extension, and the parser/IR version. Segment plans are keyed by document ID,

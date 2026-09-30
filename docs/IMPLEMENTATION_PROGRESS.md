@@ -294,8 +294,8 @@ P0–P2 findings.
 **Status:** Implemented and approved by an independent read-only reviewer;
 automated exit criteria pass.
 
-**Scenario:** text-based PDFs with reasonable structure become listenable;
-scanned PDFs report that OCR is not available.
+**Scenario (Slice 10 baseline):** born-digital PDFs with reasonable structure
+become listenable; scan-like pages were diagnosed rather than misread.
 
 **Implemented:** Poppler extracts page-positioned text and image regions.
 Repeated page furniture and margin page numbers are suppressed, columns are
@@ -305,15 +305,17 @@ outline nodes when qpdf is installed; visual heading structure remains the
 fallback. The parser stores a best-effort layout warning and identifies
 scanned-only documents instead of returning an empty reading stream.
 
-**Current limits:** tagged-PDF structure is reported but not consumed. OCR is
-not implemented. PDF reading requires Poppler's `pdftohtml` and `pdfimages`
-commands; qpdf is optional for bookmarks. Input is limited to 256 MiB and
-5,000 pages; extractor output and each external tool runtime are bounded.
+**Current limits at this slice:** tagged-PDF structure was reported but not
+consumed. OCR support was added later in Slice 13. PDF reading requires
+Poppler's `pdftohtml` and `pdfimages` commands; qpdf is optional for bookmarks.
+Input is limited to 256 MiB and 5,000 pages; extractor output and each external
+tool runtime are bounded.
 
 **Verified so far:** a three-page golden fixture covers two-column order,
 bookmarks, repeated headers/footers, margin page numbers, and visual headings.
-A scanned fixture verifies the `needs_ocr` error. An app-level `--no-play`
-scenario sends reconstructed text through segmentation and fake synthesis.
+A scanned fixture at that time verified the `needs_ocr` diagnostic. An
+app-level `--no-play` scenario sends reconstructed text through segmentation
+and fake synthesis.
 Cancellation stops the extraction process and temporary raster output is
 removed. `gofmt`, `go test ./...`, and `go vet ./...` pass. Manual CLI help
 confirms the documented source list.
@@ -388,3 +390,45 @@ fingerprinting; no P0–P2 findings remain.
 
 **Current limit:** Numeric literals retain their Go source spelling, so
 hexadecimal or underscored values may not sound as naturally as decimal values.
+
+## Slice 13 — local OCR and streamed scanned-PDF playback
+
+**Scenario:** `listen scanned.pdf` recognizes scan-like pages locally, begins
+playback before OCR reaches the end of the document, and reuses completed OCR
+and speech cache artifacts after interruption.
+
+**Status:** Complete after independent reviewer approval. Local OCR, page
+streaming, ordered speech generation, cache reuse, and progress are wired
+through the user-facing reader.
+
+**Implemented:** Poppler preflight identifies candidate pages and Tesseract
+converts local TSV word geometry into the existing PDF layout and Document IR.
+Page results flow through the existing segment planner and ordered speech/cache
+pipeline. The normal playback path caps its opening buffer at three seconds;
+it starts sooner when the first page ends with a shorter ready audio buffer.
+`--no-play`, `--export`, and translated reading complete OCR first and show
+page progress. Config defaults to English and accepts installed Tesseract IDs
+such as `eng+por`. OCR is local, content-addressed, and atomically cached per
+page. Low-confidence and empty OCR pages are reported. The current streamed
+path does not restore playback position on rerun; completed OCR and audio are
+reused from the beginning. Chapter navigation is unavailable while OCR is
+still discovering the complete PDF outline.
+
+**Verified:** a two-page image-only PDF golden checks English OCR text
+and source-page order. Parser coverage verifies page-local IR ranges, identical
+segment IDs between streaming and complete plans, and interruption after page
+one followed by cache reuse on resume. Pipeline and app integration tests use
+opening audio shorter than the startup threshold, delay page two OCR, and
+verify the opening audio is queued before page two finishes. An app-level
+`--no-play` test verifies progress, OCR warnings, and text reaching fake speech.
+Settings and parser tests cover language configuration and validation. The only
+committed OCR quality fixture currently covers English. The full `go test
+./...` and `go vet ./...` gates pass, as do race tests for the app, pipeline,
+and PDF parser, `git diff --check`, and `listen --help` output.
+
+**Reviewer:** Approved after follow-up by an independent read-only reviewer.
+The first review found that short opening pages could keep playback below its
+startup threshold until later OCR completed. The stream now flushes at the
+first nonempty page boundary once that page's ordered audio is ready. The
+reviewer confirmed the regression is covered and reported no remaining P0–P2
+findings.

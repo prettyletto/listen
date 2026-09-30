@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -61,6 +62,85 @@ func TestStreamStartsPlaybackBeforeRemainingSegmentsFinish(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestStreamFromStartsAudioWhileSegmentProducerIsStillRunning(t *testing.T) {
+	player := &recordingPlayer{startedCh: make(chan struct{})}
+	firstPagesReady := make(chan struct{})
+	finishProducer := make(chan struct{})
+	producerFinished := make(chan struct{})
+	producer := func(ctx context.Context, emit func(segment.Segment) error, boundary func() error) error {
+		if err := emit(segment.Segment{ID: "page-0", Seq: 0, SpokenText: "opening page"}); err != nil {
+			return err
+		}
+		if err := boundary(); err != nil {
+			return err
+		}
+		close(firstPagesReady)
+		select {
+		case <-finishProducer:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		err := emit(segment.Segment{ID: "page-1", Seq: 1, SpokenText: "later page"})
+		close(producerFinished)
+		return err
+	}
+	done := make(chan struct {
+		report StreamReport
+		err    error
+	}, 1)
+	go func() {
+		report, err := StreamFrom(context.Background(), 0, producer, &testkit.FakeSynthesizer{Duration: 100 * time.Millisecond}, nil, player, StreamOptions{
+			Workers: 1, QueueCapacity: 1, StartupBuffer: 3 * time.Second,
+		})
+		done <- struct {
+			report StreamReport
+			err    error
+		}{report: report, err: err}
+	}()
+	select {
+	case <-firstPagesReady:
+	case <-time.After(time.Second):
+		t.Fatal("producer did not release the opening segments")
+	}
+	select {
+	case <-player.startedCh:
+	case <-time.After(time.Second):
+		t.Fatal("playback waited for the producer to finish the document")
+	}
+	select {
+	case <-producerFinished:
+		t.Fatal("producer finished before playback started")
+	default:
+	}
+	close(finishProducer)
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if result.report.Generated != 2 || len(player.items) != 2 {
+			t.Fatalf("stream report=%#v queued=%#v, want two ordered segments", result.report, player.items)
+		}
+		for index, item := range player.items {
+			if item.Seq != uint64(index) {
+				t.Fatalf("player received segment sequence %d at index %d", item.Seq, index)
+			}
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("live segment stream did not finish")
+	}
+}
+
+func TestStreamFromRejectsNonContiguousSegments(t *testing.T) {
+	producer := func(_ context.Context, emit func(segment.Segment) error, _ func() error) error {
+		return emit(segment.Segment{ID: "gap", Seq: 1})
+	}
+	_, err := StreamFrom(context.Background(), 0, producer, &testkit.FakeSynthesizer{Duration: time.Second}, nil, nil, StreamOptions{})
+	if err == nil || !strings.Contains(err.Error(), "not contiguous at sequence 0") {
+		t.Fatalf("non-contiguous producer error = %v", err)
 	}
 }
 

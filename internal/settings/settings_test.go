@@ -19,6 +19,7 @@ func TestSettingsSaveLoadAndPreserveLocaleVoices(t *testing.T) {
 	config.SetupComplete = true
 	config.CloudPolicy = "never"
 	config.Speech.DefaultSpeed = 1.2
+	config.OCRLanguages = "eng+por"
 	if err := Save(context.Background(), directory, config); err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +27,7 @@ func TestSettingsSaveLoadAndPreserveLocaleVoices(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("load config found=%v err=%v", found, err)
 	}
-	if got.Speech.DefaultVoice != "pf_dora" || got.Speech.DefaultSpeed != 1.2 || got.Voices["en-GB"] != "bf_emma" || !got.SetupComplete || got.CloudPolicy != "never" {
+	if got.Speech.DefaultVoice != "pf_dora" || got.Speech.DefaultSpeed != 1.2 || got.Voices["en-GB"] != "bf_emma" || !got.SetupComplete || got.CloudPolicy != "never" || got.OCRLanguages != "eng+por" {
 		t.Fatalf("loaded config = %#v", got)
 	}
 	info, err := os.Stat(Path(directory))
@@ -43,7 +44,7 @@ func TestSettingsDefaultsAndRejectsInvalidState(t *testing.T) {
 	if err != nil || found {
 		t.Fatalf("missing config found=%v err=%v", found, err)
 	}
-	if config.Speech.DefaultVoice != "af_heart" || config.CloudPolicy != "ask" || config.CloudProvider != "openai" || config.CloudModel != "gpt-5.6-luna" {
+	if config.Speech.DefaultVoice != "af_heart" || config.CloudPolicy != "ask" || config.CloudProvider != "openai" || config.CloudModel != "gpt-5.6-luna" || config.OCRLanguages != "eng" {
 		t.Fatalf("default config = %#v", config)
 	}
 	if err := SetLocaleVoice(&config, "en-US", "pf_dora"); err == nil {
@@ -62,6 +63,19 @@ func TestSettingsDefaultsAndRejectsInvalidState(t *testing.T) {
 	config.CloudModel = "model with spaces"
 	if err := Save(context.Background(), t.TempDir(), config); err == nil {
 		t.Fatal("saved an invalid cloud model ID")
+	}
+}
+
+func TestOCRLanguagePreferenceValidation(t *testing.T) {
+	for _, languages := range []string{"eng", "eng+por", "chi_sim+chi_tra"} {
+		if err := ValidateOCRLanguages(languages); err != nil {
+			t.Errorf("ValidateOCRLanguages(%q): %v", languages, err)
+		}
+	}
+	for _, languages := range []string{"", "eng+", "+eng", "eng+eng", "eng por", "../../eng", "a+b+c+d+e+f+g+h+i"} {
+		if err := ValidateOCRLanguages(languages); err == nil {
+			t.Errorf("ValidateOCRLanguages(%q) accepted an invalid language list", languages)
+		}
 	}
 }
 

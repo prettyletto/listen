@@ -40,18 +40,46 @@ Brazilian Portuguese only.
 
 ## PDF reading
 
-Text-based PDFs are parsed on a best-effort basis and require Poppler's
+PDFs are parsed on a best-effort basis and require Poppler's
 `pdftohtml` and `pdfimages` commands. Poppler also provides `pdfinfo`, which
 supplies available title and author metadata. On Arch Linux, install Poppler with
 `sudo pacman -S poppler`. `listen setup` does not download or install PDF tools.
 
 When `qpdf` is installed, its PDF outline is used for bookmark navigation.
 Without it, headings are inferred from page layout and a warning is retained
-with the parsed document. Pages that appear scanned are reported as needing
-OCR; this release does not run OCR.
+with the parsed document. Pages that appear scanned are rendered with Poppler
+and recognized by local Tesseract using TSV output and page geometry. Install
+Tesseract plus trained data for the desired languages separately; Listen does
+not download language packs. English is the default. Configure additional
+language IDs, for example `listen config set ocr-languages eng+por`. Listen
+checks that each configured pack is installed before OCR begins. See the
+[Tesseract installation guide](https://tesseract-ocr.github.io/tessdoc/Installation.html)
+and [command-line guide](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html).
+
+For normal `listen scanned.pdf` playback, pages are OCRed sequentially and
+their segments enter the ordered speech pipeline as each page completes. The
+opening playback buffer is capped at three seconds for this path, and a short
+first page starts playback as soon as that page's audio is ready. OCR then
+continues while the listener hears earlier pages. The terminal/player reports
+recognized-page progress. The live pass cannot offer PDF chapter selection
+until the full outline is known. `--no-play`, `--export`, and translated
+reading process all scan-like pages before audio generation or playback.
+
+OCR is local: PDF pages and recognized text are not uploaded. Atomic page
+artifacts are keyed by document content, OCR/parser versions, Tesseract
+version, language list, resolution, and page number. Interrupted runs reuse
+completed pages and completed speech audio. A stopped streamed PDF starts from
+the first page on the next invocation; its cached work is reused, but the
+playback position is not restored yet. Confidence below the current threshold
+and pages with no recognized words produce warnings. Recognition quality
+depends on language data, print/scan quality, rotation, and layout. The only
+committed OCR quality fixture currently covers English, so other languages
+are configurable but not yet claimed as verified.
+
 To bound local processing of untrusted documents, PDF input is limited to
 256 MiB and 5,000 pages. Extractor output is capped and each external PDF tool
-has a two-minute time limit.
+has a two-minute time limit. Individual OCR raster images and Tesseract output
+also have size limits.
 
 ## Cloud translation
 
