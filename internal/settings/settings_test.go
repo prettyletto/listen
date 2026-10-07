@@ -90,3 +90,18 @@ func TestSettingsSaveHonorsCancellation(t *testing.T) {
 		t.Fatalf("config exists after canceled save: %v", err)
 	}
 }
+
+func TestVersionOneSettingsMigrateToPlaybackRateOne(t *testing.T) {
+	directory := t.TempDir()
+	legacy := `{"config_version":1,"setup_complete":true,"speech":{"default_voice":"pf_dora","default_speed":1.25},"ocr_languages":"eng","voices":{"pt-BR":"pf_dora"},"cloud_policy":"ask","cloud_provider":"openai","cloud_model":"gpt-5.6-luna"}`
+	if err := os.WriteFile(Path(directory), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := Load(directory)
+	if err != nil || !found {
+		t.Fatalf("migrate legacy settings found=%v err=%v", found, err)
+	}
+	if got.Version != ConfigVersion || got.PlaybackRate != 1 || got.Speech.DefaultVoice != "pf_dora" || got.Speech.DefaultSpeed != 1.25 || got.Voices["pt-BR"] != "pf_dora" {
+		t.Fatalf("migrated settings = %#v", got)
+	}
+}

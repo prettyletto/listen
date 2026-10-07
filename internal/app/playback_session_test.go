@@ -4,16 +4,20 @@ import (
 	"context"
 	"errors"
 	"io"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/prettyletto/listen/internal/domain"
+	"github.com/prettyletto/listen/internal/paths"
 	"github.com/prettyletto/listen/internal/pipeline"
 	"github.com/prettyletto/listen/internal/playback"
 	"github.com/prettyletto/listen/internal/playerui"
 	"github.com/prettyletto/listen/internal/segment"
 	"github.com/prettyletto/listen/internal/session"
+	"github.com/prettyletto/listen/internal/settings"
 	"github.com/prettyletto/listen/internal/testkit"
 )
 
@@ -41,6 +45,83 @@ func TestChaptersForPlanGroupsSegmentsByMajorUnit(t *testing.T) {
 	}
 }
 
+func TestPrimaryChapterStopsIncludeChaptersAtVaryingPartDepthsAndKeepSections(t *testing.T) {
+	plan := segment.Plan{DocumentID: "book", Segments: []segment.Segment{
+		{Seq: 0, MajorUnitID: "chapter-1", SectionPath: []string{"Example Book", "Chapter 1"}},
+		{Seq: 1, MajorUnitID: "section-1-1", SectionPath: []string{"Example Book", "Chapter 1", "Section 1.1"}},
+		{Seq: 2, MajorUnitID: "chapter-2", SectionPath: []string{"Example Book", "Part I", "Chapter 2"}},
+		{Seq: 3, MajorUnitID: "section-2-1", SectionPath: []string{"Example Book", "Part I", "Chapter 2", "Section 2.1"}},
+		{Seq: 4, MajorUnitID: "chapter-3", SectionPath: []string{"Example Book", "Part I", "Chapter 3"}},
+		{Seq: 5, MajorUnitID: "chapter-4", SectionPath: []string{"Example Book", "Part II", "Chapter 4"}},
+		{Seq: 6, MajorUnitID: "chapter-5", SectionPath: []string{"Example Book", "Part III", "Chapter 5"}},
+		{Seq: 7, MajorUnitID: "question-1", SectionPath: []string{"Example Book", "Discussion Questions", "Chapter 1"}},
+		{Seq: 8, MajorUnitID: "question-2", SectionPath: []string{"Example Book", "Discussion Questions", "Chapter 2"}},
+		{Seq: 9, MajorUnitID: "question-3", SectionPath: []string{"Example Book", "Discussion Questions", "Chapter 3"}},
+	}}
+	outline := []*domain.OutlineNode{{ID: "book-root", Role: domain.RoleBook, Depth: 0, StartBlock: 0, EndBlockExclusive: 10, Children: []*domain.OutlineNode{
+		{ID: "chapter-1", Title: "Chapter 1", Role: domain.RoleChapter, Depth: 1, StartBlock: 0, EndBlockExclusive: 2, Children: []*domain.OutlineNode{
+			{ID: "section-1-1", Title: "Section 1.1", Role: domain.RoleChapter, Depth: 2, StartBlock: 1, EndBlockExclusive: 2},
+		}},
+		{ID: "part-1", Title: "Part I", Role: domain.RolePart, Depth: 1, StartBlock: 2, EndBlockExclusive: 5, Children: []*domain.OutlineNode{
+			{ID: "chapter-2", Title: "Chapter 2", Role: domain.RoleChapter, Depth: 2, StartBlock: 2, EndBlockExclusive: 4, Children: []*domain.OutlineNode{
+				{ID: "section-2-1", Title: "Section 2.1", Role: domain.RoleChapter, Depth: 3, StartBlock: 3, EndBlockExclusive: 4},
+			}},
+			{ID: "chapter-3", Title: "Chapter 3", Role: domain.RoleChapter, Depth: 2, StartBlock: 4, EndBlockExclusive: 5},
+		}},
+		{ID: "part-2", Title: "Part II", Role: domain.RolePart, Depth: 1, StartBlock: 5, EndBlockExclusive: 6, Children: []*domain.OutlineNode{
+			{ID: "chapter-4", Title: "Chapter 4", Role: domain.RoleChapter, Depth: 2, StartBlock: 5, EndBlockExclusive: 6},
+		}},
+		{ID: "part-3", Title: "Part III", Role: domain.RolePart, Depth: 1, StartBlock: 6, EndBlockExclusive: 7, Children: []*domain.OutlineNode{
+			{ID: "chapter-5", Title: "Chapter 5", Role: domain.RoleChapter, Depth: 2, StartBlock: 6, EndBlockExclusive: 7},
+		}},
+		{ID: "discussion-questions", Title: "Discussion Questions", Role: domain.RoleAppendix, Depth: 1, StartBlock: 7, EndBlockExclusive: 10, Children: []*domain.OutlineNode{
+			{ID: "question-1", Title: "Chapter 1", Role: domain.RoleChapter, Depth: 2, StartBlock: 7, EndBlockExclusive: 8},
+			{ID: "question-2", Title: "Chapter 2", Role: domain.RoleChapter, Depth: 2, StartBlock: 8, EndBlockExclusive: 9},
+			{ID: "question-3", Title: "Chapter 3", Role: domain.RoleChapter, Depth: 2, StartBlock: 9, EndBlockExclusive: 10},
+		}},
+	}}}
+	chapters := markPrimaryChapterStops(chaptersForPlan(plan, "Example Book", "book.epub"), outline)
+	if len(chapters) != 10 {
+		t.Fatalf("full chapter map has %d entries, want 10: %#v", len(chapters), chapters)
+	}
+	var primaryIDs []string
+	for _, chapter := range chapters {
+		if chapter.Primary {
+			primaryIDs = append(primaryIDs, chapter.ID)
+		}
+	}
+	if strings.Join(primaryIDs, ",") != "chapter-1,chapter-2,chapter-3,chapter-4,chapter-5" {
+		t.Fatalf("primary stops = %v, want root chapter plus chapters from Parts I–III", primaryIDs)
+	}
+	if chapters[3].Title != "Part I  ›  Chapter 2  ›  Section 2.1" || chapters[3].StartIndex != 3 || chapters[3].StartSeq != 3 {
+		t.Fatalf("nested section lost its path or playback boundary: %#v", chapters[3])
+	}
+	for index := 7; index < 10; index++ {
+		if chapters[index].Primary {
+			t.Errorf("appendix question %q was promoted to a main chapter", chapters[index].Title)
+		}
+	}
+}
+
+func TestPreviousAndNextChapterActionsSkipNestedStops(t *testing.T) {
+	chapters := []playerui.Chapter{
+		{ID: "chapter-1", StartIndex: 0, Primary: true},
+		{ID: "section-1-1", StartIndex: 2},
+		{ID: "section-1-2", StartIndex: 4},
+		{ID: "chapter-2", StartIndex: 6, Primary: true},
+		{ID: "chapter-3", StartIndex: 9, Primary: true},
+	}
+	if target, ok := chapterTargetForAction(playerui.Action{Kind: playerui.ActionNext}, 2, chapters, 12); !ok || target != 3 {
+		t.Fatalf("next from nested section = (%d, %v), want chapter 2 at index 3", target, ok)
+	}
+	if target, ok := chapterTargetForAction(playerui.Action{Kind: playerui.ActionPrevious}, 3, chapters, 12); !ok || target != 0 {
+		t.Fatalf("previous from chapter 2 = (%d, %v), want chapter 1 at index 0", target, ok)
+	}
+	if target, ok := chapterTargetForAction(playerui.Action{Kind: playerui.ActionNext}, 4, chapters, 12); ok || target != len(chapters) {
+		t.Fatalf("next from final primary stop = (%d, %v), want end-of-book", target, ok)
+	}
+}
+
 func TestPendingChapterNavigationWinsOverJustCompletedStreamError(t *testing.T) {
 	chapters := []playerui.Chapter{{Title: "One", StartIndex: 0}, {Title: "Two", StartIndex: 2}}
 	actions := make(chan playerui.Action, 2)
@@ -58,6 +139,34 @@ func TestPlaybackPreparationStatusExplainsTranslationWork(t *testing.T) {
 	}
 	if got := chapterPreparationStatus(true); got != "Translating and preparing audio" {
 		t.Fatalf("translated preparation status = %q", got)
+	}
+}
+
+func TestStreamedPDFPlayerDeclaresChapterControlsUnavailable(t *testing.T) {
+	plan := segment.Plan{DocumentID: "scanned-pdf", Segments: []segment.Segment{{ID: "placeholder", Seq: 0}}}
+	chapters := []playerui.Chapter{{ID: "pdf", Title: "Reading order", StartIndex: 0, StartSeq: 0}}
+	var enabled bool
+	var reason string
+	deps := runtimeDeps{
+		interactivePlayback: func(io.Reader, io.Writer) bool { return true },
+		startPlaybackScreen: func(_ io.Reader, _ io.Writer, model playerui.Model) (playerScreen, error) {
+			enabled, reason = model.ChapterNavigation()
+			return nil, errors.New("test stops after observing the model")
+		},
+	}
+	liveProducer := func(context.Context, func(segment.Segment) error, func() error, func(string)) error {
+		return errors.New("unexpectedly started PDF production")
+	}
+	_, _, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
+		listenOptions{playbackSpeed: 1}, "Scanned book", plan,
+		playerui.StartPoint{StartIndex: 0, StartSeq: 0, ChapterIndex: 0}, chapters,
+		&testkit.FakeSynthesizer{Duration: time.Second}, nil,
+		pipeline.StreamOptions{StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, liveProducer, nil)
+	if err == nil {
+		t.Fatal("playback continued after the test screen rejected startup")
+	}
+	if enabled || !strings.Contains(reason, "PDF recognition") {
+		t.Fatalf("streamed-PDF chapter navigation = enabled:%v reason:%q", enabled, reason)
 	}
 }
 
@@ -95,15 +204,15 @@ func TestPlaybackNextChapterCancelsCurrentStreamAndRestartsAtChapterBoundary(t *
 		err     error
 	}, 1)
 	go func() {
-		report, stopped, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
+		report, end, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
 			listenOptions{playbackSpeed: 1}, "Example Book", plan,
 			playerui.StartPoint{StartIndex: 0, StartSeq: 0, ChapterIndex: 0}, chapters,
-			goSynth, nil, pipeline.StreamOptions{StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, nil)
+			goSynth, nil, pipeline.StreamOptions{StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, nil, nil)
 		result <- struct {
 			report  pipeline.StreamReport
 			stopped bool
 			err     error
-		}{report: report, stopped: stopped, err: err}
+		}{report: report, stopped: end != PlaybackCompleted, err: err}
 	}()
 	select {
 	case <-screen.started:
@@ -196,14 +305,14 @@ func TestPlaybackWaitsForReadyAudioBeforeSeekingAndResumes(t *testing.T) {
 		err     error
 	}, 1)
 	go func() {
-		_, stopped, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
+		_, end, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
 			listenOptions{playbackSpeed: 1}, "Example Book", plan,
 			playerui.StartPoint{StartIndex: 0, StartSeq: 0, ChapterIndex: 0}, chapters,
-			synth, nil, pipeline.StreamOptions{Workers: 1, StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, nil)
+			synth, nil, pipeline.StreamOptions{Workers: 1, StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, nil, nil)
 		result <- struct {
 			stopped bool
 			err     error
-		}{stopped: stopped, err: err}
+		}{stopped: end != PlaybackCompleted, err: err}
 	}()
 
 	awaitSignal(t, screen.started, "playback start")
@@ -238,6 +347,221 @@ func TestPlaybackWaitsForReadyAudioBeforeSeekingAndResumes(t *testing.T) {
 	}
 }
 
+func TestChapterBrowserRestoresPlaybackPauseStateOnCancel(t *testing.T) {
+	plan := segment.Plan{DocumentID: "book", Segments: []segment.Segment{
+		{ID: "one", Seq: 0, MajorUnitID: "chapter-1", SectionPath: []string{"Chapter 1"}},
+		{ID: "two", Seq: 1, MajorUnitID: "chapter-2", SectionPath: []string{"Chapter 2"}},
+	}}
+	chapters := chaptersForPlan(plan, "Book", "book.txt")
+	for _, initiallyPaused := range []bool{false, true} {
+		t.Run(map[bool]string{false: "playing", true: "paused"}[initiallyPaused], func(t *testing.T) {
+			screen := &fakePlayerScreen{
+				actions: make(chan playerui.Action, 8), started: make(chan struct{}, 1),
+				pauseStates: make(chan bool, 8),
+			}
+			playerReady := make(chan *bufferedSeekTestPlayer, 1)
+			deps := runtimeDeps{
+				interactivePlayback: func(io.Reader, io.Writer) bool { return true },
+				startPlaybackScreen: func(io.Reader, io.Writer, playerui.Model) (playerScreen, error) { return screen, nil },
+				newPlayer: func(playback.MPVOptions) playback.Player {
+					player := &bufferedSeekTestPlayer{appended: make(chan playback.Item, 4)}
+					playerReady <- player
+					return player
+				},
+			}
+			result := make(chan error, 1)
+			go func() {
+				_, _, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
+					listenOptions{playbackSpeed: 1}, "Book", plan,
+					playerui.StartPoint{StartIndex: 0, StartSeq: 0, ChapterIndex: 0}, chapters,
+					&testkit.FakeSynthesizer{Duration: time.Second}, nil,
+					pipeline.StreamOptions{StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, nil, nil)
+				result <- err
+			}()
+			awaitSignal(t, screen.started, "player start")
+			player := <-playerReady
+			awaitSignalValue(t, screen.pauseStates, false, "new playback starts unpaused")
+			if initiallyPaused {
+				screen.actions <- playerui.Action{Kind: playerui.ActionTogglePause}
+				awaitSignalValue(t, screen.pauseStates, true, "playback pauses before opening chapters")
+			}
+			screen.actions <- playerui.Action{Kind: playerui.ActionOpenChapters}
+			awaitSignalValue(t, screen.pauseStates, true, "opening chapters pauses playback")
+			screen.actions <- playerui.Action{Kind: playerui.ActionCancelChapters}
+			awaitSignalValue(t, screen.pauseStates, initiallyPaused, "closing chapter browser restores the prior pause state")
+			if player.isPaused() != initiallyPaused {
+				t.Fatalf("initially paused=%v, player pause state after cancel=%v", initiallyPaused, player.isPaused())
+			}
+			screen.actions <- playerui.Action{Kind: playerui.ActionStop}
+			select {
+			case err := <-result:
+				if err != nil {
+					t.Fatalf("stop after chapter browsing: %v", err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("playback did not stop after chapter browsing")
+			}
+		})
+	}
+}
+
+func TestChapterBrowserSelectionRestartsAtChosenBoundary(t *testing.T) {
+	plan := segment.Plan{DocumentID: "book", Segments: []segment.Segment{
+		{ID: "one", Seq: 0, MajorUnitID: "chapter-1", SectionPath: []string{"Chapter 1"}},
+		{ID: "two", Seq: 1, MajorUnitID: "chapter-2", SectionPath: []string{"Chapter 2"}},
+	}}
+	chapters := chaptersForPlan(plan, "Book", "book.txt")
+	screen := &fakePlayerScreen{actions: make(chan playerui.Action, 4), started: make(chan struct{}, 2), pauseStates: make(chan bool, 8)}
+	players := make(chan *bufferedSeekTestPlayer, 2)
+	deps := runtimeDeps{
+		interactivePlayback: func(io.Reader, io.Writer) bool { return true },
+		startPlaybackScreen: func(io.Reader, io.Writer, playerui.Model) (playerScreen, error) { return screen, nil },
+		newPlayer: func(playback.MPVOptions) playback.Player {
+			player := &bufferedSeekTestPlayer{appended: make(chan playback.Item, 4)}
+			players <- player
+			return player
+		},
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, _, err := runPlayback(context.Background(), strings.NewReader(""), io.Discard, deps,
+			listenOptions{playbackSpeed: 1}, "Book", plan,
+			playerui.StartPoint{StartIndex: 0, StartSeq: 0, ChapterIndex: 0}, chapters,
+			&testkit.FakeSynthesizer{Duration: time.Second}, nil,
+			pipeline.StreamOptions{StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, nil, nil)
+		result <- err
+	}()
+	awaitSignal(t, screen.started, "first chapter playback")
+	first := <-players
+	awaitItem(t, first.appended, 0)
+	screen.actions <- playerui.Action{Kind: playerui.ActionOpenChapters}
+	awaitSignalValue(t, screen.pauseStates, true, "chapter picker pauses first chapter")
+	screen.actions <- playerui.Action{Kind: playerui.ActionSelectChapter, Start: playerui.StartPoint{ChapterIndex: 1, StartIndex: 1, StartSeq: 1}}
+	awaitSignal(t, screen.started, "selected chapter playback")
+	second := <-players
+	awaitItem(t, second.appended, 1)
+	screen.actions <- playerui.Action{Kind: playerui.ActionStop}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("stop after selected chapter: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("playback did not stop after selected chapter")
+	}
+}
+
+func TestPageForPlaybackPositionUsesStreamResolverForScannedPDF(t *testing.T) {
+	plan := segment.Plan{Segments: []segment.Segment{{ID: "placeholder", Seq: 7, Source: domain.SourceRef{Page: 1}}}}
+	resolver := session.NewPositionResolver()
+	resolver.Add(segment.Segment{ID: "real-passage", Seq: 7, Source: domain.SourceRef{Page: 42}}, 2)
+	page := pageForPlaybackPosition(plan, resolver.Record, 7, 0)
+	if page != 42 {
+		t.Fatalf("streamed PDF sequence mapped to page %d; want resolver page 42", page)
+	}
+}
+
+func TestPlaybackRateChangeAppliesLiveAndPersistsForNextSession(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	userPaths, err := paths.FromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := settings.Defaults()
+	config.PlaybackRate = 1.2
+	if err := settings.Save(context.Background(), userPaths.ConfigDir, config); err != nil {
+		t.Fatal(err)
+	}
+	plan := segment.Plan{DocumentID: "book", Segments: []segment.Segment{{ID: "opening", Seq: 0, SourceText: "Opening passage.", SpokenText: "Opening passage."}}}
+	screen := &fakePlayerScreen{actions: make(chan playerui.Action, 2), started: make(chan struct{}, 1), statuses: make(chan string, 8)}
+	player := &liveRateTestPlayer{started: make(chan struct{}), rates: make(chan float64, 2), closed: make(chan struct{})}
+	deps := runtimeDeps{newPlayer: func(options playback.MPVOptions) playback.Player {
+		if options.PlaybackSpeed != 1.2 {
+			t.Errorf("player started at rate %.1f, want persisted default 1.2", options.PlaybackSpeed)
+		}
+		return player
+	}}.withDefaults()
+	result := make(chan playbackDecision, 1)
+	go func() {
+		result <- runPlaybackPass(context.Background(), io.Discard, deps,
+			listenOptions{playbackSpeed: 1.2}, plan, plan, 0, 0,
+			[]playerui.Chapter{{ID: "opening", Title: "Opening", StartIndex: 0, StartSeq: 0}},
+			&testkit.FakeSynthesizer{Duration: time.Second}, nil, pipeline.StreamOptions{StartupBuffer: time.Nanosecond},
+			nil, session.State{}, screen, nil, nil)
+	}()
+	awaitSignal(t, screen.started, "playback starts before rate adjustment")
+	screen.actions <- playerui.Action{Kind: playerui.ActionPlaybackRate, Rate: 1.7}
+	select {
+	case rate := <-player.rates:
+		if rate != 1.7 {
+			t.Fatalf("live player rate = %.1f, want 1.7", rate)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("player did not receive the live playback-rate change")
+	}
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case status := <-screen.statuses:
+			if strings.Contains(status, "saved for next session") {
+				goto saved
+			}
+		case <-deadline:
+			t.Fatal("playback-rate preference was not saved after the live update")
+		}
+	}
+saved:
+	got, found, err := settings.Load(userPaths.ConfigDir)
+	if err != nil || !found || got.PlaybackRate != 1.7 {
+		t.Fatalf("persisted playback rate = %.1f, found=%v, err=%v", got.PlaybackRate, found, err)
+	}
+	screen.actions <- playerui.Action{Kind: playerui.ActionStop}
+	select {
+	case decision := <-result:
+		if decision.err != nil || !decision.stop {
+			t.Fatalf("stop after rate change = %#v", decision)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("playback did not stop after live rate change")
+	}
+}
+
+type liveRateTestPlayer struct {
+	started chan struct{}
+	rates   chan float64
+	closed  chan struct{}
+	close   sync.Once
+}
+
+func (p *liveRateTestPlayer) Start(context.Context) error {
+	close(p.started)
+	return nil
+}
+
+func (*liveRateTestPlayer) Append(ctx context.Context, _ playback.Item) error { return ctx.Err() }
+
+func (*liveRateTestPlayer) Position(context.Context) (uint64, time.Duration, error) { return 0, 0, nil }
+
+func (*liveRateTestPlayer) Wait(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }
+
+func (p *liveRateTestPlayer) SetPlaybackRate(ctx context.Context, rate float64) error {
+	select {
+	case p.rates <- rate:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (p *liveRateTestPlayer) Close() error {
+	p.close.Do(func() { close(p.closed) })
+	return nil
+}
+
+var _ playback.RateSetter = (*liveRateTestPlayer)(nil)
+
 func TestLivePlaybackFinishesQueuedAudioBeforeReportingLaterPageError(t *testing.T) {
 	pageErr := errors.New("later PDF page OCR failed")
 	player := &drainingErrorPlayer{waiting: make(chan struct{}), release: make(chan struct{})}
@@ -259,7 +583,7 @@ func TestLivePlaybackFinishesQueuedAudioBeforeReportingLaterPageError(t *testing
 			playerui.StartPoint{StartIndex: 0, StartSeq: 0},
 			[]playerui.Chapter{{ID: "pdf", Title: "Reading order", StartIndex: 0, StartSeq: 0}},
 			&testkit.FakeSynthesizer{Duration: time.Second}, nil,
-			pipeline.StreamOptions{StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, liveProducer)
+			pipeline.StreamOptions{StartupBuffer: time.Nanosecond}, nil, session.State{}, nil, liveProducer, nil)
 		done <- err
 	}()
 	awaitSignal(t, player.waiting, "ready audio drain")
@@ -484,15 +808,23 @@ func (p *navigationTestPlayer) closeCalls() int {
 type fakePlayerScreen struct {
 	actions     chan playerui.Action
 	started     chan struct{}
+	statuses    chan string
 	seekPending chan time.Duration
 	pauseStates chan bool
 	positions   chan playback.Position
 }
 
 func (s *fakePlayerScreen) Actions() <-chan playerui.Action { return s.actions }
-func (*fakePlayerScreen) SetStatus(string)                  {}
-func (*fakePlayerScreen) SetProgress(int, int)              {}
-func (*fakePlayerScreen) SetChapter(int)                    {}
+func (s *fakePlayerScreen) SetStatus(status string) {
+	select {
+	case s.statuses <- status:
+	default:
+	}
+}
+func (*fakePlayerScreen) SetProgress(int, int)    {}
+func (*fakePlayerScreen) SetChapter(int)          {}
+func (*fakePlayerScreen) SetPage(int)             {}
+func (*fakePlayerScreen) SetPlaybackRate(float64) {}
 func (s *fakePlayerScreen) SetPaused(paused bool) {
 	select {
 	case s.pauseStates <- paused:

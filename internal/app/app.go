@@ -69,19 +69,20 @@ Current sources: UTF-8 text files, Markdown files, HTML documents, EPUB books, b
 `
 
 type listenOptions struct {
-	source         string
-	targetLanguage string
-	voice          string
-	speed          float64
-	playbackSpeed  float64
-	noPlay         bool
-	exportAudio    bool
-	exportPath     string
-	code           bool
-	help           bool
-	version        bool
-	voiceExplicit  bool
-	speedExplicit  bool
+	source                string
+	targetLanguage        string
+	voice                 string
+	speed                 float64
+	playbackSpeed         float64
+	noPlay                bool
+	exportAudio           bool
+	exportPath            string
+	code                  bool
+	help                  bool
+	version               bool
+	voiceExplicit         bool
+	speedExplicit         bool
+	playbackSpeedExplicit bool
 }
 
 // Run dispatches the reader command. Format-specific complexity and process
@@ -99,6 +100,9 @@ func runWithRuntime(ctx context.Context, args []string, stdin io.Reader, stdout,
 		return interrupted(err)
 	}
 	if len(args) == 0 {
+		if deps.interactivePlayback(stdin, stderr) {
+			return runListeningHome(ctx, nil, stdin, stderr, deps)
+		}
 		return writeUsage(stdout)
 	}
 	switch args[0] {
@@ -131,7 +135,67 @@ func runWithRuntime(ctx context.Context, args []string, stdin io.Reader, stdout,
 		_, err := fmt.Fprintln(stdout, "listen development")
 		return err
 	}
+	if !options.noPlay && !options.exportAudio && options.source != "-" && deps.interactivePlayback(stdin, stderr) {
+		return runListeningHome(ctx, &options, stdin, stderr, deps)
+	}
+	if options.exportAudio && deps.interactivePlayback(stdin, stderr) {
+		return runInteractiveExport(ctx, options, stdin, stderr, deps)
+	}
 	return listenSource(ctx, options, stdin, stderr, deps)
+}
+
+func runInteractiveExport(ctx context.Context, options listenOptions, stdin io.Reader, stderr io.Writer, deps runtimeDeps) error {
+	screen, err := deps.startExportScreen(stdin, stderr, playerui.NewExportProgress(exportSourceTitle(options.source)))
+	if err != nil || screen == nil {
+		_, _ = fmt.Fprintln(stderr, "Could not open the export progress screen; continuing with text progress.")
+		return listenSource(ctx, options, stdin, stderr, deps)
+	}
+
+	workCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	resultPath := ""
+	deps.exportScreen = screen
+	deps.exportResultPath = &resultPath
+	workDone := make(chan struct{})
+	watcherDone := make(chan struct{})
+	go func() {
+		defer close(watcherDone)
+		select {
+		case action := <-screen.Actions():
+			if action.Kind == playerui.ActionStop {
+				screen.SetStatus("Stopping audiobook export")
+				cancel()
+			}
+		case <-workCtx.Done():
+		case <-workDone:
+		}
+	}()
+
+	runErr := listenSource(workCtx, options, stdin, stderr, deps)
+	close(workDone)
+	cancel()
+	<-watcherDone
+	screen.Close()
+	if runErr == nil && resultPath != "" {
+		if _, err := fmt.Fprintf(stderr, "✓ Audiobook is ready at %s\n", resultPath); err != nil {
+			return err
+		}
+	}
+	return runErr
+}
+
+func exportSourceTitle(sourcePath string) string {
+	if sourcePath == "" || sourcePath == "-" {
+		return "Audiobook export"
+	}
+	name := filepath.Base(sourcePath)
+	if extension := filepath.Ext(name); extension != "" {
+		name = strings.TrimSuffix(name, extension)
+	}
+	if strings.TrimSpace(name) == "" || name == "." || name == string(filepath.Separator) {
+		return "Audiobook export"
+	}
+	return name
 }
 
 func parseListenOptions(args []string) (listenOptions, error) {
@@ -210,6 +274,7 @@ func parseListenOptions(args []string) (listenOptions, error) {
 			}
 			i = next
 			options.playbackSpeed = parsed
+			options.playbackSpeedExplicit = true
 		default:
 			if strings.HasPrefix(arg, "-") {
 				return options, fmt.Errorf("unknown option %q", arg)
@@ -259,6 +324,22 @@ func floatOption(args []string, index int, name, value string, hasValue bool) (f
 		return 0, index, fmt.Errorf("%s must be a number", name)
 	}
 	return parsed, next, nil
+}
+
+type exportStatusWriter struct {
+	screen playerScreen
+}
+
+func (writer exportStatusWriter) Write(data []byte) (int, error) {
+	if writer.screen == nil {
+		return len(data), nil
+	}
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\r\n"), "\n") {
+		if message := strings.TrimSpace(line); message != "" {
+			writer.screen.SetStatus(message)
+		}
+	}
+	return len(data), nil
 }
 
 func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, stderr io.Writer, deps runtimeDeps) error {
@@ -357,12 +438,22 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 	if !options.speedExplicit {
 		options.speed = readerConfig.Speech.DefaultSpeed
 	}
+	if !options.playbackSpeedExplicit {
+		options.playbackSpeed = readerConfig.PlaybackRate
+	}
 	manifests, err := cache.NewFileStore(userPaths.CacheDir)
 	if err != nil {
 		return apperr.New("storage_unavailable", "Could not prepare local audio storage.", "Check that your cache directory is writable.", err)
 	}
 	playbackMode := !options.noPlay && !options.exportAudio
-	terminal := ui.New(stderr)
+	var terminalOutput io.Writer = stderr
+	if options.exportAudio && deps.exportScreen != nil {
+		terminalOutput = exportStatusWriter{screen: deps.exportScreen}
+	}
+	terminal := ui.New(terminalOutput)
+	if options.exportAudio {
+		_ = terminal.Info("Preparing audiobook export.")
+	}
 	var doc *domain.Document
 	if strings.EqualFold(filepath.Ext(input.Name), ".pdf") && !options.code {
 		var structureKey string
@@ -589,7 +680,7 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 	streamPlan := plan
 	var resumeOffset time.Duration
 	var sessionStore *session.Store
-	chapters := chaptersForPlan(plan, doc.Metadata.Title, input.Name)
+	chapters := markPrimaryChapterStops(chaptersForPlan(plan, doc.Metadata.Title, input.Name), doc.Outline)
 	var resumePoint *playerui.StartPoint
 	if !options.noPlay && !options.exportAudio && options.source != "-" {
 		sessionStore, err = session.NewStore(userPaths.CacheDir, input.Path)
@@ -604,6 +695,9 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 			if translationMatches {
 				point, ok := session.Resolve(plan, state)
 				if ok {
+					if state.DocumentID != "" && state.DocumentID != plan.DocumentID {
+						_ = terminal.Info("This source changed; continuing from the nearest available passage at its beginning.")
+					}
 					chapterIndex := chapterIndexAt(chapters, point.Index)
 					chapterName := "the current position"
 					if chapterIndex >= 0 && chapterIndex < len(chapters) {
@@ -612,7 +706,7 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 					resumePoint = &playerui.StartPoint{
 						Label: "Resume at " + chapterName, StartIndex: point.Index,
 						StartSeq: plan.Segments[point.Index].Seq, Offset: point.Offset,
-						ChapterIndex: chapterIndex, Resume: true,
+						ChapterIndex: chapterIndex, Resume: true, Page: plan.Segments[point.Index].Source.Page,
 					}
 				}
 			} else {
@@ -620,23 +714,11 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 			}
 		}
 	}
-	startPoint := playerui.StartPoint{Label: "Start from the beginning", StartIndex: 0, StartSeq: plan.Segments[0].Seq}
+	startPoint := playerui.StartPoint{Label: "Start from the beginning", StartIndex: 0, StartSeq: plan.Segments[0].Seq, Page: plan.Segments[0].Source.Page}
 	if resumePoint != nil {
 		startPoint = *resumePoint
 	}
-	if playbackMode && deps.interactivePlayback(stdin, stderr) && (len(chapters) > 1 || resumePoint != nil) {
-		chosen, err := deps.chooseStart(ctx, stdin, stderr, playerui.NewPicker(docTitle(doc.Metadata.Title, input.Name), chapters, resumePoint))
-		if errors.Is(err, playerui.ErrCancelled) {
-			return nil
-		}
-		if err != nil {
-			if ctx.Err() != nil {
-				return interrupted(ctx.Err())
-			}
-			return apperr.New("player_unavailable", "Could not open the chapter selector.", "Run listen from a Linux terminal, or start from the beginning in a non-interactive shell.", err)
-		}
-		startPoint = chosen
-	} else if resumePoint != nil {
+	if resumePoint != nil {
 		_ = terminal.Info("Resuming from your saved position.")
 	}
 	if startPoint.StartIndex < 0 || startPoint.StartIndex >= len(plan.Segments) {
@@ -675,20 +757,33 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 	if allCached {
 		synthesizer = cachedAudioSynthesizer{}
 	} else {
-		client, err := deps.startSynth(ctx, kokoro.Options{CacheRoot: userPaths.CacheDir, Voice: options.voice})
+		speechOptions := kokoro.Options{CacheRoot: userPaths.CacheDir, Voice: options.voice}
+		client, err := deps.startSynth(ctx, speechOptions)
 		if err != nil {
 			if ctx.Err() != nil {
 				return interrupted(ctx.Err())
 			}
 			return apperr.New("speech_setup_required", "Local speech is not ready.", "Run listen setup to install the speech engine and voice.", err)
 		}
-		synthesizer = client
+		if client == nil {
+			return apperr.New("speech_setup_required", "Local speech is not ready.", "Run listen setup to install the speech engine and voice.", errors.New("speech worker did not start"))
+		}
+		synthesizer = newRestartableSynthesizer(ctx, client, func(workerCtx context.Context) (speech.Synthesizer, error) {
+			return deps.startSynth(workerCtx, speechOptions)
+		})
 		defer synthesizer.Close()
 	}
 
-	progressStride := len(streamPlan.Segments) / 10
+	progressSteps := 10
+	if options.exportAudio {
+		progressSteps = 20
+	}
+	progressStride := (len(streamPlan.Segments) + progressSteps - 1) / progressSteps
 	if progressStride < 1 {
 		progressStride = 1
+	}
+	if options.exportAudio {
+		_ = terminal.Info("Generating audiobook audio.")
 	}
 	var playbackUI playerScreen
 	streamOptions := pipeline.StreamOptions{
@@ -697,9 +792,25 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 		Translator: streamTranslator, TranslationCache: translationCache,
 		TranslationContext: translationContext, TargetLanguage: options.targetLanguage,
 		TranslationWorkers: 2, TranslationBatchSize: 4,
+		OnSynthesisStarted: func(item segment.Segment) {
+			if deps.exportScreen != nil {
+				deps.exportScreen.SetStatus(fmt.Sprintf("Generating audiobook audio: segment %d/%d", item.Seq+1, len(streamPlan.Segments)))
+			}
+		},
 		OnProgress: func(completed, total int) {
 			if completed%progressStride == 0 || completed == total {
-				_ = terminal.Info(fmt.Sprintf("Audio ready: %d/%d segments", completed, total))
+				if options.exportAudio {
+					percent := 100
+					if total > 0 {
+						percent = completed * 100 / total
+					}
+					if deps.exportScreen != nil {
+						deps.exportScreen.SetProgress(percent*80/100, 100)
+					}
+					_ = terminal.Info(fmt.Sprintf("Preparing audiobook audio: %d%%", percent))
+				} else {
+					_ = terminal.Info(fmt.Sprintf("Audio ready: %d/%d segments", completed, total))
+				}
 			}
 		},
 		OnPlaybackStart: func() {
@@ -767,13 +878,16 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 			DocumentID: plan.DocumentID, PlaybackSpeed: options.playbackSpeed, Voice: options.voice,
 			TargetLanguage: options.targetLanguage, TranslationBackend: translationBackend,
 		}
-		var stopped bool
-		report, stopped, err = runPlayback(ctx, stdin, stderr, deps, options, docTitle(doc.Metadata.Title, input.Name), plan,
-			startPoint, chapters, synthesizer, audioCache, streamOptions, sessionStore, baseState, &playbackUI, nil)
+		var end PlaybackEnd
+		report, end, err = runPlayback(ctx, stdin, stderr, deps, options, docTitle(doc.Metadata.Title, input.Name), plan,
+			startPoint, chapters, synthesizer, audioCache, streamOptions, sessionStore, baseState, &playbackUI, nil, nil)
 		if err != nil {
 			return playerError(err)
 		}
-		if stopped {
+		if deps.playbackEnd != nil {
+			*deps.playbackEnd = end
+		}
+		if end == PlaybackStopped || end == PlaybackReturnedHome {
 			_ = terminal.Info("Playback stopped. Your current position is saved.")
 			return nil
 		}
@@ -812,16 +926,52 @@ func listenSource(ctx context.Context, options listenOptions, stdin io.Reader, s
 				return apperr.New("playback_failed", "The translated source is incomplete.", "Run listen again to complete translation before exporting.", nil)
 			}
 		}
+		_ = terminal.Info("Writing audiobook files to " + outputDirectory)
 		result, err := audiobook.Build(ctx, audiobook.Options{
 			Root: outputDirectory, SourcePath: input.Path, DocumentID: plan.DocumentID,
 			TargetLanguage: options.targetLanguage, Title: doc.Metadata.Title, Authors: doc.Metadata.Authors,
 			Voice: options.voice, Speed: options.speed, Plan: exportPlan, Audio: report.Results,
+			OnProgress: func(progress audiobook.Progress) {
+				message := ""
+				percent := 80
+				switch progress.Stage {
+				case audiobook.ProgressUsingExistingBuild:
+					message = "Using the completed audiobook files."
+					percent = 100
+				case audiobook.ProgressFullBookMP3:
+					message = "Creating full-book MP3."
+					percent = 81
+				case audiobook.ProgressChapterMP3:
+					message = fmt.Sprintf("Creating chapter tracks: %d/%d", progress.ChapterIndex, progress.ChapterCount)
+					if progress.ChapterCount > 0 {
+						percent = 82 + progress.ChapterIndex*15/progress.ChapterCount
+					}
+				case audiobook.ProgressFullBookM4B:
+					message = "Creating audiobook with chapter markers."
+					percent = 98
+				case audiobook.ProgressFinalizing:
+					message = "Finalizing audiobook files."
+					percent = 99
+				}
+				if message != "" {
+					if deps.exportScreen != nil {
+						deps.exportScreen.SetProgress(percent, 100)
+					}
+					_ = terminal.Info(message)
+				}
+			},
 		})
 		if err != nil {
 			if ctx.Err() != nil {
 				return interrupted(ctx.Err())
 			}
 			return apperr.New("export_failed", "Could not create the audiobook export.", "Completed audio is safe; fix the reported storage or FFmpeg issue and run listen again.", err)
+		}
+		if deps.exportScreen != nil {
+			deps.exportScreen.SetProgress(100, 100)
+		}
+		if deps.exportResultPath != nil {
+			*deps.exportResultPath = result.Directory
 		}
 		_ = terminal.Success("Audiobook is ready at " + result.Directory)
 		return nil

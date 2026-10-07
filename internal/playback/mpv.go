@@ -504,6 +504,27 @@ func (p *MPV) SetPaused(ctx context.Context, paused bool) error {
 	return err
 }
 
+// SetPlaybackRate updates mpv's live speed property. Generation speed remains
+// independent and affects only audio synthesized in a later session.
+func (p *MPV) SetPlaybackRate(ctx context.Context, rate float64) error {
+	if ctx == nil {
+		return errors.New("mpv playback-rate control requires a context")
+	}
+	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0.5 || rate > 3 {
+		return errors.New("mpv playback rate must be between 0.5 and 3.0")
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.started || p.closed {
+		return errors.New("mpv player is not running")
+	}
+	if _, err := p.commandLocked(ctx, []any{"set_property", "speed", rate}); err != nil {
+		return fmt.Errorf("set mpv playback rate: %w", err)
+	}
+	p.options.PlaybackSpeed = rate
+	return nil
+}
+
 func (p *MPV) Wait(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("mpv wait requires a context")

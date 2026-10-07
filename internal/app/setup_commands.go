@@ -82,28 +82,11 @@ func setupCommand(ctx context.Context, args []string, stdin io.Reader, stdout, s
 			return writeErr
 		}
 	}
-	if err := deps.provisionSpeech(ctx, userPaths, stdout, stderr); err != nil {
+	if err := prepareLocalSpeechRuntime(ctx, userPaths, config, stdout, stderr, deps, nil); err != nil {
 		if ctx.Err() != nil {
 			return interrupted(ctx.Err())
 		}
-		return apperr.New("setup_failed", "Could not install the local speech runtime.", "Check your internet connection and install uv, then run listen setup again.", err)
-	}
-	voiceIDs := []string{config.Speech.DefaultVoice}
-	for _, configuredVoice := range config.Voices {
-		if configuredVoice != config.Speech.DefaultVoice {
-			voiceIDs = append(voiceIDs, configuredVoice)
-		}
-	}
-	if len(voiceIDs) > 1 {
-		sort.Strings(voiceIDs[1:])
-	}
-	for _, voiceID := range voiceIDs {
-		if err := setup.HealthSynthesize(ctx, userPaths.CacheDir, voiceID, deps.startSynth); err != nil {
-			if ctx.Err() != nil {
-				return interrupted(ctx.Err())
-			}
-			return apperr.New("setup_failed", "The local speech runtime did not pass its audio check.", "Run listen doctor for details, then run listen setup again.", err)
-		}
+		return apperr.New("setup_failed", "Could not prepare local speech.", "Check your internet connection and install uv, then run listen setup again.", err)
 	}
 	if translationPair != "" {
 		if _, err := fmt.Fprintf(stdout, "Installing the local translator for %s. Source text stays on this device.\n", strings.ReplaceAll(translationPair, ":", " to ")); err != nil {
@@ -142,6 +125,86 @@ func setupCommand(ctx context.Context, args []string, stdin io.Reader, stdout, s
 	}
 	_, err = fmt.Fprintln(stdout, "✓ Local speech is ready. Run listen <source> to start listening.")
 	return err
+}
+
+func prepareLocalSpeechRuntime(ctx context.Context, userPaths paths.Paths, config settings.Config, stdout, stderr io.Writer, deps runtimeDeps, progress func(string)) error {
+	if err := settings.Validate(config); err != nil {
+		return fmt.Errorf("validate local speech preferences: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := deps.provisionSpeech(ctx, userPaths, stdout, stderr); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("install local speech runtime: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if progress != nil {
+		progress("Checking your local voices…")
+	}
+	voiceIDs := []string{config.Speech.DefaultVoice}
+	seen := map[string]bool{config.Speech.DefaultVoice: true}
+	for _, configuredVoice := range config.Voices {
+		if !seen[configuredVoice] {
+			voiceIDs = append(voiceIDs, configuredVoice)
+			seen[configuredVoice] = true
+		}
+	}
+	if len(voiceIDs) > 1 {
+		sort.Strings(voiceIDs[1:])
+	}
+	for _, voiceID := range voiceIDs {
+		if err := setup.HealthSynthesize(ctx, userPaths.CacheDir, voiceID, deps.startSynth); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("check local voice %s: %w", voiceID, err)
+		}
+	}
+	return ctx.Err()
+}
+
+func localSpeechRuntimeReady(ctx context.Context, userPaths paths.Paths) (bool, error) {
+	if ctx == nil {
+		return false, errors.New("speech readiness check requires a context")
+	}
+	config, found, err := settings.Load(userPaths.ConfigDir)
+	if err != nil || !found || !config.SetupComplete {
+		return false, err
+	}
+	verifyCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	var version string
+	if python := os.Getenv("LISTEN_PYTHON"); python != "" {
+		resolved, lookErr := exec.LookPath(python)
+		if lookErr != nil {
+			return false, nil
+		}
+		output, runErr := exec.CommandContext(verifyCtx, resolved, "-c", "import importlib.metadata as m; print(m.version('kokoro'))").Output()
+		if runErr == nil {
+			version = strings.TrimSpace(string(output))
+		} else if ctx.Err() != nil {
+			return false, ctx.Err()
+		} else {
+			return false, nil
+		}
+	} else {
+		version, err = (setup.Manager{}).Verify(verifyCtx, userPaths)
+		if err != nil {
+			if ctx.Err() != nil {
+				return false, ctx.Err()
+			}
+			return false, nil
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return version == setup.KokoroVersion, nil
 }
 
 func parseSetupTranslation(args []string) (string, error) {
@@ -239,7 +302,7 @@ func configCommand(ctx context.Context, args []string, stdout io.Writer) error {
 		return nil
 	}
 	if len(args) < 3 || args[0] != "set" {
-		return apperr.New("invalid_arguments", "The config command did not recognize that change.", "Use listen config set voice <id>, listen config set speed <0.5–2.0>, listen config set ocr-languages eng+por, or set cloud-policy <ask|never|allowed>.", nil)
+		return apperr.New("invalid_arguments", "The config command did not recognize that change.", "Use listen config set voice <id>, listen config set speed <0.5–2.0>, listen config set playback-speed <0.5–3.0>, listen config set ocr-languages eng+por, or set cloud-policy <ask|never|allowed>.", nil)
 	}
 	switch args[1] {
 	case "voice":
@@ -262,6 +325,19 @@ func configCommand(ctx context.Context, args []string, stdout io.Writer) error {
 			}
 			if err == nil {
 				config.Speech.DefaultSpeed = speed
+			}
+		}
+	case "playback-speed":
+		if len(args) != 3 {
+			err = errors.New("playback speed setting needs one value")
+		} else {
+			var rate float64
+			rate, err = strconv.ParseFloat(args[2], 64)
+			if err == nil && (rate < 0.5 || rate > 3 || rate != rate) {
+				err = errors.New("playback speed must be between 0.5 and 3.0")
+			}
+			if err == nil {
+				config.PlaybackRate = rate
 			}
 		}
 	case "ocr-languages":

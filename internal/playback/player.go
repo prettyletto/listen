@@ -54,3 +54,8 @@ type Pausable interface {
 type DurationReader interface {
 	CurrentDuration(context.Context) (time.Duration, error)
 }
+
+// RateSetter changes playback speed without restarting the current audio item.
+type RateSetter interface {
+	SetPlaybackRate(context.Context, float64) error
+}

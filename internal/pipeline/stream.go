@@ -33,6 +33,7 @@ type StreamOptions struct {
 	TargetLanguage        string
 	TranslationWorkers    int
 	TranslationBatchSize  int
+	OnSynthesisStarted    func(segment.Segment)
 	OnProgress            func(completed, total int)
 	OnPlaybackStart       func()
 	OnTranslationMeasured func(time.Duration, []segment.Segment)
@@ -437,6 +438,9 @@ func synthesize(ctx context.Context, item segment.Segment, synthesizer speech.Sy
 		if err != nil {
 			return synthesis{err: fmt.Errorf("prepare speech cache: %w", err)}
 		}
+	}
+	if options.OnSynthesisStarted != nil {
+		options.OnSynthesisStarted(item)
 	}
 	started := time.Now()
 	result, err := synthesizer.Synthesize(ctx, request)

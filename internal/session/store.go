@@ -21,6 +21,8 @@ type State struct {
 	DocumentID         string        `json:"document_id"`
 	SegmentID          string        `json:"segment_id,omitempty"`
 	SegmentSeq         uint64        `json:"segment_seq"`
+	Page               int           `json:"page,omitempty"`
+	PageSegment        int           `json:"page_segment,omitempty"`
 	MajorUnitID        string        `json:"major_unit_id,omitempty"`
 	SectionPath        []string      `json:"section_path,omitempty"`
 	Offset             time.Duration `json:"offset_ns"`

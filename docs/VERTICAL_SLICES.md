@@ -300,3 +300,75 @@ Exit:
 - page results remain local and uncertainty is shown to the user;
 - `go test ./...` and `go vet ./...` pass;
 - the independent Slice 13 reviewer approves.
+
+## Slice 14 — personal listening home and saved return loop
+
+**Scenario:** `listen` opens a local home; choose or add a source, listen, press
+Escape to save and return, then continue it from the home.
+
+Implement a versioned, atomic, process-serialized XDG data catalog of local
+source references. Keep the home and player in one Bubble Tea program, add a
+local path entry flow, remember successful interactive sources and their
+translation/code choices, and distinguish completed, return-home, exit, and
+failure outcomes. Direct source commands continue to start immediately; a
+non-terminal no-argument run continues to show usage.
+
+Exit: the home/play/home loop works repeatedly; direct completion returns to
+the shell; Escape returns home only after the existing session checkpoint and
+pipeline cleanup finish; q/Ctrl-C exits after saving. Catalog failures do not
+block direct playback. Run full tests and vet, then obtain independent review
+approval before Slice 15.
+
+## Slice 15 — resumable streamed scanned PDFs
+
+**Scenario:** stop during a scanned PDF, rerun it, and resume at the saved
+passage without replaying earlier audio.
+
+Replace the placeholder-only playback checkpoint with a thread-safe resolver
+for real emitted segments. Persist stable segment and PDF page location with
+the offset. On restart, reuse cached OCR while rebuilding the ordered mapping,
+then suppress earlier segments from synthesis and playback. Preserve early
+first-page playback for new sessions and show progress while a saved location
+is restored.
+
+Exit: tests cover mid-passage and page-boundary resume, interruption,
+cancellation during restoration, changed page mappings, and cache reuse.
+Relinking unchanged content retains the offset when only the path-sensitive
+passage ID changes; changed content resets it. Any adjusted starting point is explained.
+Run full tests, vet, relevant race tests, and independent review before Slice
+16.
+
+## Slice 16 — source browsing and in-player navigation
+
+Add a keyboard-driven filesystem browser rooted at the current directory,
+hidden-file toggle, explicit folder selection, missing-source recovery, and
+searchable in-player chapter selection. Refine responsive copy, contextual
+help, and progress so passage-local time is never presented as chapter or
+book duration.
+
+Exit: one-Enter latest-source continuation, file and folder selection,
+spaces/Unicode paths, missing/moved sources and undo, chapter browse cancellation
+from playing and paused states, page-aware passage progress, and narrow/standard/
+wide layouts pass interaction and rendered checks. Run full tests, vet, targeted
+race checks, and independent review before Slice 17.
+
+## Slice 17 — guided setup and listening preferences
+
+Make recommended local setup available from the home after source selection,
+with an explanation of local downloads, explicit install start, cancellable
+progress, and source retention for retry and resume. Customization or Back must
+not install files. Preserve the standalone `listen setup` wizard. Add home
+preferences for a default voice, language-specific voice mappings,
+speech-generation speed, and playback speed; offer a short fixed local voice
+preview that stops on cancellation or navigation. Playback rate can change
+in-session; voice and generation speed apply next session. Persist preferences
+globally with a versioned migration and preserve explicit CLI overrides.
+Translation remains a per-source choice and follows the existing cloud-consent
+policy; voice-language selection never enables it.
+
+Exit: setup retry/cancellation, preview cleanup, preferences persistence,
+voice validation, playback-rate live changes, CLI overrides, and full
+source-to-listen flows pass with fake workers. Inspect setup, preferences, and
+preview states at 40×15, 80×24, and 120×30. Run full tests, vet, relevant race
+checks, then obtain independent review approval before declaring this slice
+complete.

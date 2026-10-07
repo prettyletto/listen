@@ -12,6 +12,7 @@ import (
 
 	"github.com/prettyletto/listen/internal/apperr"
 	"github.com/prettyletto/listen/internal/paths"
+	"github.com/prettyletto/listen/internal/playback"
 	"github.com/prettyletto/listen/internal/settings"
 	"github.com/prettyletto/listen/internal/speech"
 	"github.com/prettyletto/listen/internal/speech/kokoro"
@@ -229,6 +230,7 @@ func TestVoiceAndConfigCommandsExposeAndPersistPreferences(t *testing.T) {
 	for _, command := range [][]string{
 		{"config", "set", "voice", "pt-BR", "pf_dora"},
 		{"config", "set", "speed", "1.25"},
+		{"config", "set", "playback-speed", "1.4"},
 		{"config", "set", "ocr-languages", "eng+por"},
 		{"config", "set", "cloud-policy", "never"},
 		{"config", "set", "cloud-provider", "openai"},
@@ -243,14 +245,14 @@ func TestVoiceAndConfigCommandsExposeAndPersistPreferences(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("config found=%v err=%v", found, err)
 	}
-	if config.Voices["pt-BR"] != "pf_dora" || config.Speech.DefaultSpeed != 1.25 || config.OCRLanguages != "eng+por" || config.CloudPolicy != "never" || config.CloudProvider != "openai" || config.CloudModel != "gpt-test-model" {
+	if config.Voices["pt-BR"] != "pf_dora" || config.Speech.DefaultSpeed != 1.25 || config.PlaybackRate != 1.4 || config.OCRLanguages != "eng+por" || config.CloudPolicy != "never" || config.CloudProvider != "openai" || config.CloudModel != "gpt-test-model" {
 		t.Fatalf("updated preferences = %#v", config)
 	}
 	stdout.Reset()
 	if err := runWithRuntime(context.Background(), []string{"config"}, nil, &stdout, io.Discard, runtimeDeps{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "\"default_speed\": 1.25") || !strings.Contains(stdout.String(), "\"ocr_languages\": \"eng+por\"") || !strings.Contains(stdout.String(), "\"pt-BR\": \"pf_dora\"") || strings.Contains(stdout.String(), "OPENAI_API_KEY") {
+	if !strings.Contains(stdout.String(), "\"default_speed\": 1.25") || !strings.Contains(stdout.String(), "\"playback_rate\": 1.4") || !strings.Contains(stdout.String(), "\"ocr_languages\": \"eng+por\"") || !strings.Contains(stdout.String(), "\"pt-BR\": \"pf_dora\"") || strings.Contains(stdout.String(), "OPENAI_API_KEY") {
 		t.Fatalf("config view = %q", stdout.String())
 	}
 }
@@ -284,6 +286,7 @@ func TestListenUsesConfiguredVoiceAndSpeedUnlessFlagsOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	config.Speech.DefaultSpeed = 1.25
+	config.PlaybackRate = 1.4
 	if err := settings.Save(context.Background(), userPaths.ConfigDir, config); err != nil {
 		t.Fatal(err)
 	}
@@ -293,12 +296,17 @@ func TestListenUsesConfiguredVoiceAndSpeedUnlessFlagsOverride(t *testing.T) {
 	}
 	var options []kokoro.Options
 	var requests []speech.Request
+	var playerOptions []playback.MPVOptions
 	deps := runtimeDeps{
 		startSynth: func(_ context.Context, option kokoro.Options) (speech.Synthesizer, error) {
 			options = append(options, option)
 			return appTestSynth{t: t, onRequest: func(request speech.Request) {
 				requests = append(requests, request)
 			}}, nil
+		},
+		newPlayer: func(options playback.MPVOptions) playback.Player {
+			playerOptions = append(playerOptions, options)
+			return nil
 		},
 	}
 	if err := runWithRuntime(context.Background(), []string{sourcePath, "--no-play"}, nil, io.Discard, io.Discard, deps); err != nil {
@@ -312,6 +320,23 @@ func TestListenUsesConfiguredVoiceAndSpeedUnlessFlagsOverride(t *testing.T) {
 	}
 	if len(options) != 2 || options[1].Voice != "am_adam" || len(requests) != 2 || requests[1].Voice != "am_adam" || requests[1].Speed != 0.9 {
 		t.Fatalf("explicit synthesis override options=%#v requests=%#v", options, requests)
+	}
+	defaultPath := filepath.Join(home, "default-rate.txt")
+	if err := os.WriteFile(defaultPath, []byte("Default playback speed."), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runWithRuntime(context.Background(), []string{defaultPath}, nil, io.Discard, io.Discard, deps); err == nil {
+		t.Fatal("expected the fake nil player to stop playback after capturing the configured rate")
+	}
+	overridePath := filepath.Join(home, "override-rate.txt")
+	if err := os.WriteFile(overridePath, []byte("Explicit playback speed."), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runWithRuntime(context.Background(), []string{overridePath, "--playback-speed=1.8"}, nil, io.Discard, io.Discard, deps); err == nil {
+		t.Fatal("expected the fake nil player to stop playback after capturing the explicit rate")
+	}
+	if len(playerOptions) != 2 || playerOptions[0].PlaybackSpeed != 1.4 || playerOptions[1].PlaybackSpeed != 1.8 {
+		t.Fatalf("configured and explicit player rates = %#v; want 1.4 then 1.8", playerOptions)
 	}
 }
 

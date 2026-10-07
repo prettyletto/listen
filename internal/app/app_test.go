@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -55,6 +56,10 @@ func TestModelsCommandListsConfiguredProviderModels(t *testing.T) {
 }
 
 func TestTranslateFlagReportsMissingLocalBackendWithoutReadingSource(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
 	err := Run(context.Background(), []string{"missing.txt", "--translate", "pt-BR"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	if !apperr.HasCode(err, "translation_not_ready") || err.Error() != "Local translation is not ready." {
 		t.Fatalf("got %v, want actionable translation_not_ready", err)
@@ -490,6 +495,7 @@ exec "%s" "$@"
 }
 
 type earlyOCRTestPlayer struct {
+	mu                        sync.Mutex
 	marker                    string
 	items                     []playback.Item
 	firstAppendBeforeLaterOCR bool
@@ -516,6 +522,8 @@ func (p *earlyOCRTestPlayer) Append(ctx context.Context, item playback.Item) err
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if len(p.items) == 0 {
 		_, err := os.Stat(p.marker)
 		p.firstAppendBeforeLaterOCR = errors.Is(err, os.ErrNotExist)
@@ -524,6 +532,8 @@ func (p *earlyOCRTestPlayer) Append(ctx context.Context, item playback.Item) err
 	return nil
 }
 func (p *earlyOCRTestPlayer) Position(context.Context) (uint64, time.Duration, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if len(p.items) == 0 {
 		return 0, 0, errors.New("no audio is queued")
 	}

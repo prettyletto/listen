@@ -38,6 +38,39 @@ func TestStreamCommitsDelayedSynthesisInSourceOrder(t *testing.T) {
 	}
 }
 
+func TestStreamReportsSynthesisStartBeforeSegmentCompletes(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan segment.Segment, 1)
+	done := make(chan error, 1)
+	plan := segment.Plan{Segments: []segment.Segment{{Seq: 0, ID: "opening", SpokenText: "Opening passage."}}}
+	synth := &testkit.FakeSynthesizer{DelayBySeq: map[uint64]time.Duration{0: time.Hour}}
+	go func() {
+		_, err := Stream(ctx, plan, synth, nil, nil, StreamOptions{
+			OnSynthesisStarted: func(item segment.Segment) { started <- item },
+		})
+		done <- err
+	}()
+
+	select {
+	case item := <-started:
+		if item.ID != "opening" || item.Seq != 0 {
+			t.Fatalf("synthesis start reported %#v, want the opening segment", item)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("synthesis start was not reported before the delayed segment finished")
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("stream completed before synthesis ended: %v", err)
+	default:
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled stream returned %v, want context.Canceled", err)
+	}
+}
+
 func TestStreamStartsPlaybackBeforeRemainingSegmentsFinish(t *testing.T) {
 	synth := &testkit.FakeSynthesizer{
 		DelayBySeq: map[uint64]time.Duration{0: 5 * time.Millisecond, 1: 10 * time.Millisecond, 2: 400 * time.Millisecond},

@@ -17,6 +17,7 @@ import (
 	"github.com/prettyletto/listen/internal/speech/kokoro"
 	"github.com/prettyletto/listen/internal/translate"
 	"github.com/prettyletto/listen/internal/translate/argos"
+
 	"github.com/prettyletto/listen/internal/translate/openai"
 )
 
@@ -33,9 +34,14 @@ type runtimeDeps struct {
 	interactivePlayback  func(io.Reader, io.Writer) bool
 	chooseStart          func(context.Context, io.Reader, io.Writer, playerui.Model) (playerui.StartPoint, error)
 	startPlaybackScreen  func(io.Reader, io.Writer, playerui.Model) (playerScreen, error)
+	startExportScreen    func(io.Reader, io.Writer, playerui.Model) (playerScreen, error)
+	exportScreen         playerScreen
+	exportResultPath     *string
 	translator           translate.Translator
 	startupBuffer        time.Duration
 	sessionPollInterval  time.Duration
+	playbackEnd          *PlaybackEnd
+	speechReady          func(context.Context, paths.Paths) (bool, error)
 }
 
 func (deps runtimeDeps) withDefaults() runtimeDeps {
@@ -53,6 +59,9 @@ func (deps runtimeDeps) withDefaults() runtimeDeps {
 		deps.provisionSpeech = func(ctx context.Context, userPaths paths.Paths, stdout, stderr io.Writer) error {
 			return (setup.Manager{Stdout: stdout, Stderr: stderr}).Provision(ctx, userPaths)
 		}
+	}
+	if deps.speechReady == nil {
+		deps.speechReady = localSpeechRuntimeReady
 	}
 	if deps.installTranslator == nil {
 		deps.installTranslator = func(ctx context.Context, userPaths paths.Paths) error {
@@ -98,6 +107,11 @@ func (deps runtimeDeps) withDefaults() runtimeDeps {
 	}
 	if deps.startPlaybackScreen == nil {
 		deps.startPlaybackScreen = func(input io.Reader, output io.Writer, model playerui.Model) (playerScreen, error) {
+			return playerui.StartPlayback(input, output, model)
+		}
+	}
+	if deps.startExportScreen == nil {
+		deps.startExportScreen = func(input io.Reader, output io.Writer, model playerui.Model) (playerScreen, error) {
 			return playerui.StartPlayback(input, output, model)
 		}
 	}

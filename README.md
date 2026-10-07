@@ -16,20 +16,34 @@ listen book.epub --export
 listen book.epub -o ./book-audio/
 ```
 
-In an interactive Linux terminal, a book with chapters opens a start picker:
-read the full book from the beginning, resume an unfinished session, or start
-at a chapter and continue through the rest. The book title appears once above
-the chapter list; press **/** to search long lists, **↑/↓** or **j/k** to move,
-then **Enter** to start. While audio plays, use **Space** to pause/resume,
-**Left/Right** to seek by five seconds, **p/n** to move between chapters, and
-**q** or **Ctrl-C** to stop and save your place. Piped and other non-interactive
-runs do not open the picker.
+In an interactive Linux terminal, run `listen` with no arguments to open your
+local listening home. Press **a** to add a file or folder path, **/** to search
+recent sources, **Up/Down** to move focus, **Enter** to open the single focused
+item, and **q** to exit.
+The featured Continue source appears once; Recents lists the other sources.
+`listen <source>` still
+starts that source immediately and resumes an unfinished session. While audio
+plays, use **Space** to pause/resume, **Left/Right** to seek by five seconds,
+**p/n** to move between chapters, **Escape** to save and return home, and
+**q** or **Ctrl-C** to save and exit. Piped and other non-interactive runs do
+not open the listening home.
+
+When local speech needs setup, select a source first, then choose **Start
+recommended setup** to download the local runtime and voice files. Press **p**
+from home to choose voices by language and adjust speech or playback speed.
+Voice and speech-generation speed apply to the next session; `+` and `-`
+change playback speed during listening. Run `listen config set playback-speed
+1.2` to set a default from 0.5× to 3×.
 
 Use `listen book.epub -o ./book-audio/` to build a reusable book bundle instead
 of opening playback. It contains the full-book MP3 and M4B, separate chapter
 MP3s, a chapter playlist, and a manifest. Completed speech is cached as it is
 generated, so rerunning after an interruption continues without regenerating
-finished audio. `-o DIRECTORY` is shorthand for `--export DIRECTORY`.
+finished audio. In an interactive terminal, Listen shows the current stage and
+progress bar. During audio generation and file encoding, an activity marker
+moves while the completion percentage tracks finished work. Non-interactive
+runs print progress updates. `-o DIRECTORY` is shorthand for
+`--export DIRECTORY`.
 
 `listen docs/` reads supported documentation files into one ordered session.
 Directory inputs honor applicable `.gitignore` rules and keep each block's
@@ -51,6 +65,10 @@ are installed. English is the default; set additional Tesseract language IDs
 with `listen config set ocr-languages eng+por`. Normal playback begins as
 pages are recognized, while `--no-play`, `--export`, and translated reading
 finish OCR first and show page progress. OCR does not upload document text.
+For streamed scanned-PDF playback, the listening position is saved by passage
+and page. On return, Listen checks cached OCR pages, skips earlier passages,
+and resumes within the saved audio passage. If the PDF changed, it starts near
+the saved page at the beginning of a passage and explains the adjustment.
 OCR quality depends on print and scan quality, language data, and page layout;
 Listen reports low-confidence and unreadable pages instead of claiming exact
 recognition. Only English currently has a committed OCR fixture. PDFs are
@@ -64,8 +82,9 @@ Portuguese translation; `listen setup --translate en:pt-BR` selects it
 directly. Setup installs the private Python 3.13 environment, checks local
 synthesis and any selected translator, and saves choices after those checks
 pass. `listen config` displays saved preferences, and `listen config set ...`
-changes them. Translation setup downloads only model files; source text stays
-on this device.
+changes them, including `playback-speed`. Translation setup downloads only
+model files; source text stays on this device. Choosing a voice language does
+not enable translation; translation remains explicit for each source.
 Use `listen doctor` to inspect setup and playback readiness, `listen voices` to
 view voice choices, and `listen config` to manage preferences.
 

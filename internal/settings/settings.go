@@ -14,13 +14,15 @@ import (
 	"github.com/prettyletto/listen/internal/speech/kokoro"
 )
 
-const ConfigVersion = 1
+const ConfigVersion = 2
+const previousConfigVersion = 1
 const FileName = "config.json"
 
 type Config struct {
 	Version       int               `json:"config_version"`
 	SetupComplete bool              `json:"setup_complete"`
 	Speech        SpeechConfig      `json:"speech"`
+	PlaybackRate  float64           `json:"playback_rate"`
 	OCRLanguages  string            `json:"ocr_languages"`
 	Voices        map[string]string `json:"voices"`
 	CloudPolicy   string            `json:"cloud_policy"`
@@ -37,6 +39,7 @@ func Defaults() Config {
 	return Config{
 		Version:       ConfigVersion,
 		Speech:        SpeechConfig{DefaultVoice: "af_heart", DefaultSpeed: 1},
+		PlaybackRate:  1,
 		OCRLanguages:  "eng",
 		Voices:        map[string]string{},
 		CloudPolicy:   "ask",
@@ -60,9 +63,12 @@ func Load(directory string) (Config, bool, error) {
 	if err := json.Unmarshal(data, &config); err != nil {
 		return Config{}, false, fmt.Errorf("decode config: %w", err)
 	}
-	if config.Version != ConfigVersion {
+	if config.Version != ConfigVersion && config.Version != previousConfigVersion {
 		return Config{}, false, fmt.Errorf("unsupported config version %d", config.Version)
 	}
+	// Version 1 stored generation preferences but had no separate playback
+	// rate. The zero value intentionally migrates to the familiar 1x rate.
+	config.Version = ConfigVersion
 	config = mergeDefaults(config)
 	if err := Validate(config); err != nil {
 		return Config{}, false, err
@@ -90,6 +96,9 @@ func Validate(config Config) error {
 	}
 	if config.Speech.DefaultSpeed < 0.5 || config.Speech.DefaultSpeed > 2 || config.Speech.DefaultSpeed != config.Speech.DefaultSpeed {
 		return errors.New("default speech speed must be between 0.5 and 2.0")
+	}
+	if config.PlaybackRate < 0.5 || config.PlaybackRate > 3 || config.PlaybackRate != config.PlaybackRate {
+		return errors.New("default playback rate must be between 0.5 and 3.0")
 	}
 	if err := ValidateOCRLanguages(config.OCRLanguages); err != nil {
 		return err
@@ -171,6 +180,9 @@ func mergeDefaults(config Config) Config {
 	}
 	if config.Speech.DefaultSpeed == 0 {
 		config.Speech.DefaultSpeed = defaults.Speech.DefaultSpeed
+	}
+	if config.PlaybackRate == 0 {
+		config.PlaybackRate = defaults.PlaybackRate
 	}
 	if config.OCRLanguages == "" {
 		config.OCRLanguages = defaults.OCRLanguages

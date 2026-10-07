@@ -38,6 +38,23 @@ type Options struct {
 	Audio          []speech.Result
 	FFmpeg         string
 	Runner         Runner
+	OnProgress     func(Progress)
+}
+
+type ProgressStage uint8
+
+const (
+	ProgressUsingExistingBuild ProgressStage = iota + 1
+	ProgressFullBookMP3
+	ProgressChapterMP3
+	ProgressFullBookM4B
+	ProgressFinalizing
+)
+
+type Progress struct {
+	Stage        ProgressStage
+	ChapterIndex int
+	ChapterCount int
 }
 
 type Result struct {
@@ -166,6 +183,7 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		if existing.BuildID != buildID {
 			return Result{}, errors.New("existing export build identity does not match its directory")
 		}
+		reportProgress(options, Progress{Stage: ProgressUsingExistingBuild})
 		return publishCurrent(ctx, root, existing)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return Result{}, fmt.Errorf("inspect existing export build: %w", err)
@@ -211,6 +229,7 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		return Result{}, err
 	}
 	fullMP3 := "full-book.mp3"
+	reportProgress(options, Progress{Stage: ProgressFullBookMP3})
 	if err := encodeMP3(ctx, runner, program, allList, filepath.Join(stageDir, fullMP3), options.Title, options.Authors); err != nil {
 		return Result{}, fmt.Errorf("create full-book MP3: %w", err)
 	}
@@ -222,6 +241,9 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		if err := ctx.Err(); err != nil {
 			return Result{}, err
 		}
+		reportProgress(options, Progress{
+			Stage: ProgressChapterMP3, ChapterIndex: index + 1, ChapterCount: len(groups),
+		})
 		filename := fmt.Sprintf("%02d-%s.mp3", index+1, slug(group.title))
 		relativePath := filepath.ToSlash(filepath.Join("chapters", filename))
 		listPath := filepath.Join(stageDir, fmt.Sprintf("chapter-%02d-audio.txt", index+1))
@@ -246,9 +268,11 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		return Result{}, err
 	}
 	fullM4B := "full-book.m4b"
+	reportProgress(options, Progress{Stage: ProgressFullBookM4B})
 	if err := encodeM4B(ctx, runner, program, allList, metadataPath, filepath.Join(stageDir, fullM4B), options.Title, options.Authors); err != nil {
 		return Result{}, fmt.Errorf("create full-book M4B: %w", err)
 	}
+	reportProgress(options, Progress{Stage: ProgressFinalizing})
 	for _, output := range append([]string{filepath.Join(stageDir, fullMP3), filepath.Join(stageDir, fullM4B)}, chapterOutputPaths(stageDir, groups)...) {
 		if err := syncFile(output); err != nil {
 			return Result{}, fmt.Errorf("sync completed export audio: %w", err)
@@ -289,6 +313,12 @@ func Build(ctx context.Context, options Options) (Result, error) {
 		FullMP3: filepath.Join(finalDir, fullMP3), FullM4B: filepath.Join(finalDir, fullM4B),
 		Playlist: filepath.Join(finalDir, manifest.Playlist), Chapters: len(chapters),
 	})
+}
+
+func reportProgress(options Options, progress Progress) {
+	if options.OnProgress != nil {
+		options.OnProgress(progress)
+	}
 }
 
 func chapterOutputPaths(stageDir string, groups []audioGroup) []string {

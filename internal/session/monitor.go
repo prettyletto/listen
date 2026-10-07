@@ -24,7 +24,16 @@ type Monitor struct {
 // polling uses short independent contexts so cancellation can still flush one
 // final checkpoint before the player is closed.
 func StartMonitor(ctx context.Context, player PositionReader, store *Store, state State, plan segment.Plan, interval time.Duration) *Monitor {
-	if ctx == nil || player == nil || store == nil || len(plan.Segments) == 0 {
+	if len(plan.Segments) == 0 {
+		return nil
+	}
+	return StartMonitorWithRecorder(ctx, player, store, state, func(state State, seq uint64, offset time.Duration) (State, bool) {
+		return RecordPosition(state, plan, seq, offset)
+	}, interval)
+}
+
+func StartMonitorWithRecorder(ctx context.Context, player PositionReader, store *Store, state State, record PositionRecorder, interval time.Duration) *Monitor {
+	if ctx == nil || player == nil || store == nil || record == nil {
 		return nil
 	}
 	if interval <= 0 {
@@ -42,7 +51,7 @@ func StartMonitor(ctx context.Context, player PositionReader, store *Store, stat
 			if err != nil {
 				return
 			}
-			current, ok := RecordPosition(state, plan, seq, offset)
+			current, ok := record(state, seq, offset)
 			if !ok {
 				return
 			}

@@ -409,10 +409,9 @@ it starts sooner when the first page ends with a shorter ready audio buffer.
 `--no-play`, `--export`, and translated reading complete OCR first and show
 page progress. Config defaults to English and accepts installed Tesseract IDs
 such as `eng+por`. OCR is local, content-addressed, and atomically cached per
-page. Low-confidence and empty OCR pages are reported. The current streamed
-path does not restore playback position on rerun; completed OCR and audio are
-reused from the beginning. Chapter navigation is unavailable while OCR is
-still discovering the complete PDF outline.
+page. Low-confidence and empty OCR pages are reported. Chapter navigation is
+unavailable while OCR is still discovering the complete PDF outline. Slice 15
+adds streamed-PDF passage checkpoints and restoration.
 
 **Verified:** a two-page image-only PDF golden checks English OCR text
 and source-page order. Parser coverage verifies page-local IR ranges, identical
@@ -432,3 +431,132 @@ startup threshold until later OCR completed. The stream now flushes at the
 first nonempty page boundary once that page's ordered audio is ready. The
 reviewer confirmed the regression is covered and reported no remaining P0–P2
 findings.
+
+## Slice 14 — personal listening home and saved return loop
+
+**Scenario:** `listen` opens a local home; choose or add a source, listen, press
+Escape to save and return, then continue it from the home.
+
+**Status:** Complete. Independent reviewer approved after fixes for stale home
+state after direct Escape, catalog-save feedback, and saving-progress timing.
+
+**Implemented so far:** Added a versioned local source catalog in XDG data
+storage. It preserves cleaned absolute-path identity, serializes concurrent
+mutations across processes, writes atomically, and returns removed entries for
+undo without touching source or cache files. Added a home view with recent
+sources, source-path entry, search, and a shared Bubble Tea session for home
+and playback. Interactive direct-source commands still start the supplied
+source immediately; Escape now returns home and q/Ctrl-C exits. The default
+start-point picker has been removed so playback resumes or begins immediately.
+
+**Verification:** `go test ./...`, `go vet ./...`, and targeted race tests
+passed. An independent read-only review confirmed the home/play/home loop and
+found no remaining Critical or Major findings after the fixes above. Home
+currently accepts a typed or pasted path; guided setup and preferences are a
+later slice.
+
+## Slice 15 — resumable streamed scanned PDFs
+
+**Scenario:** stop during a scanned PDF, rerun it, and resume at the saved
+passage without replaying earlier audio.
+
+**Status:** Complete. Independent read-only reviewer approved with no
+unresolved Critical or Major findings.
+
+**Implemented:** Checkpoints now include the stable passage ID and sequence,
+physical PDF page, page-local passage slot, and audio offset. A synchronized
+resolver lets the playback monitor checkpoint actual streamed segments rather
+than the former placeholder. A returning read shows cancellable OCR-cache
+restoration progress in the player, rebuilds the sequence through the saved
+passage, then skips prefix segments before they reach speech or playback. New
+reads still stream their first page immediately. Changed PDF content falls
+back to the nearest passage on the saved page or nearest non-empty page, resets
+the offset, and names the adjusted page. Same-content path changes keep the
+offset when the stable ID changes with the path.
+
+**Verification:** Added an app-level scanned-fixture stop/restart test that
+saves a mid-passage page-two position, resumes at its offset, and asserts the
+page-one sequence is never appended on the second run. A subprocess test kills
+a process after a dynamic PDF checkpoint and verifies that page, passage slot,
+and offset remain recoverable. Unit tests cover thread-safe streamed checkpoint
+mapping, same-page and nearest-page fallback, same-content offset preservation,
+and Escape cancellation during restoration. The player visibly keeps the
+Escape cancel and q exit controls during restoration at 40×15, 80×24, and
+120×30. `go test ./...`, `go vet ./...`, `git diff --check`, and targeted race
+tests passed. The independent reviewer reran the focused app, session, and UI
+tests with the writable workspace temp directory and approved the slice with no
+Critical or Major findings.
+
+## Slice 16 — source browsing and in-player navigation
+
+**Scenario:** browse to a source from the listening home, recover moved files,
+and select chapters without losing the playback state.
+
+**Status:** Complete. Independent read-only reviewer approved after follow-up fixes for streamed scanned-PDF chapter controls and relink save-failure recovery.
+
+**Implemented:** The home now focuses the latest unfinished source as its
+one-Enter Continue action and labels recent sources as Continue, Start
+listening, or Start again. The filesystem browser starts at the current
+directory, filters hidden files by default, supports path search and parent
+navigation, and lets users select the current folder as documentation. Missing
+entries offer Locate, Remove, Back, and Undo; relinking keeps the existing
+destination checkpoint when present, transfers an old checkpoint only when
+reading options match, and lets static/PDF resume resolution reset offsets when
+content changed. The player adds searchable chapter navigation, restores the
+prior paused/playing state after cancellation, and displays resolver-backed PDF
+pages with passage-local timing labels. The player model declares chapter
+navigation availability and its reason: streamed scanned PDFs hide chapter
+shortcuts and explain that recognition continues when those keys are invoked
+or the user opens help. Multi-chapter sources retain their chapter controls.
+
+**Verification:** `go test ./...`, `go vet ./...`, and targeted race tests for
+playerui, app, session, and catalog pass. Rendered checks at 40×15, 80×24, and
+120×30 cover home, browser, missing-source, help, loading/restoration/playing/
+paused/error/completion player states, page visibility, minimum-size guidance,
+and no-color output. Chapter tests cover cancellation from both paused and
+playing states plus selection at the chapter boundary. Relink tests verify
+that the old entry survives a failed replacement save and is removed only
+after successful upsert. The independent read-only reviewer approved after
+confirming the scanned-PDF chapter controls remain honest, then approved the
+catalog-failure recovery follow-up. Full tests, vet, targeted race checks,
+formatting, and `git diff --check` pass.
+
+## Slice 17 — guided setup and listening preferences
+
+**Scenario:** select a source first, explicitly start cancellable local setup,
+then listen with saved voice and speed preferences.
+
+**Status:** Complete. The independent reviewer approved the source-validation,
+responsive setup/preferences, and navigation-exit follow-ups with no unresolved
+findings.
+
+**Implemented:** The home offers source-first setup with an explicit start
+action, cancellable installation and health-check progress, retry after
+cancellation or failure, and automatic start/resume of the retained source
+after success. Selected files and documentation folders are checked before
+the setup offer, so a missing, unreadable, empty, or unsupported source does
+not trigger a local download; the add-path form stays open with the path and
+an actionable error so it can be corrected. The interactive path uses the
+non-interactive provisioner so it does not compete with Bubble Tea; standalone
+`listen setup` retains its guided CLI wizard. Home preferences edit the default
+voice, per-language voice mappings, speech-generation speed, and playback
+speed. A fixed local voice sample runs through cancellable speech and playback
+workers, and its temporary audio is removed on exit. Playback speed can change immediately with `+` and `-`; voice
+and speech speed apply next session. Version-1 settings migrate to playback
+rate 1×. The `playback-speed` config setting and `--playback-speed` override
+preserve existing CLI behavior. Voice selection does not enable translation.
+
+**Focused verification:** Tests cover explicit setup start, cancellation and
+retry, retaining the selected source across setup/preferences overlays,
+preferences save/discard and `q` exit, v1 rate migration, preference persistence
+without changing cloud consent, preview cancellation and process/temp-file
+cleanup, live playback-rate persistence, CLI rate overrides, and setup,
+preferences, and preview rendering at 40×15, 80×24, and 120×30. Tests also
+verify missing, empty, unreadable, and unsupported files and folders are
+rejected before setup readiness is queried. Setup choice, retry/error,
+progress, preferences, and preview fit all three sizes; setup and preference
+screens plus preview output remain free of ANSI color codes when color is
+disabled. The full repository `go test`, `go vet`, and targeted race gates pass;
+an 80×24 terminal smoke test confirmed the empty home opens and `q` exits cleanly.
+The independent reviewer approved the final implementation with no Critical,
+Major, or Moderate findings.
