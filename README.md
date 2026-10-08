@@ -2,6 +2,57 @@
 
 `listen` turns readable things into an ordered audio stream.
 
+## Install
+
+The supported first target is Linux x86_64. Building from source requires Go
+1.23 or newer.
+
+### Linux x86_64 binary (no Go required)
+
+Download the latest release, verify its checksum, and install it in
+`~/.local/bin`:
+
+```sh
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+release="https://github.com/prettyletto/listen/releases/latest/download"
+curl -fsSL "$release/listen-linux-amd64" -o "$tmpdir/listen-linux-amd64"
+curl -fsSL "$release/SHA256SUMS" -o "$tmpdir/SHA256SUMS"
+(cd "$tmpdir" && sha256sum --check SHA256SUMS)
+install -Dm755 "$tmpdir/listen-linux-amd64" "$HOME/.local/bin/listen"
+```
+
+Add `~/.local/bin` to `PATH` if needed. This skips Go; first-run listening
+still needs `uv`, `mpv`, and FFmpeg as described below.
+
+### Install with Go
+
+With Go installed, install the latest version directly:
+
+```sh
+go install github.com/prettyletto/listen/cmd/listen@latest
+```
+
+If the shell cannot find `listen`, add `$(go env GOPATH)/bin` to `PATH` (or
+set `GOBIN` before running `go install`).
+
+To install the checked-out development version, use Go and Make:
+
+```sh
+git clone https://github.com/prettyletto/listen.git
+cd listen
+make install
+```
+
+`make install` installs to `~/.local/bin`; choose another absolute directory
+with `make install BINDIR="$HOME/bin"`. It still requires Go to compile the
+program. The Go install command writes to Go's configured binary directory.
+
+Before the first listening session, install `uv`, `mpv`, and FFmpeg, then run
+`listen setup` to install and check local speech. See
+[`docs/SETUP_AND_DISTRIBUTION.md`](docs/SETUP_AND_DISTRIBUTION.md) for host
+requirements and PDF tools.
+
 The product promise is intentionally small:
 
 ```sh
@@ -49,12 +100,22 @@ runs print progress updates. `-o DIRECTORY` is shorthand for
 Directory inputs honor applicable `.gitignore` rules and keep each block's
 source path in the shared document model.
 
-Everything complicated lives behind those commands: structure parsing, resumable caches, translation backends, local-vs-cloud planning, Kokoro process management, ordered concurrent generation, buffering, playback, and export.
+The command keeps document parsing, translation, local speech, caching, and
+export behind a source path. `listen main.go --code` adds structured code
+narration, including package structure, signatures, comments, and recognized
+control flow.
 
-listen main.go --code opts into Go AST narration of package structure,
-signatures, comments, and recognized control flow.
+## Development
 
-This repository is an implementation foundation. The Python prototype under `reference/python-prototype/` is the behavioral reference for the existing TTS/cache/section UX; the new architecture is Go-first, with Python limited to long-lived Kokoro and optional local translation inference workers.
+The command and parser tests use fake speech/translation workers and do not
+download model files:
+
+```sh
+make test
+make vet
+```
+
+`make check` formats Go sources, runs the full test suite, and runs `go vet`.
 
 PDFs are supported on a best-effort basis. PDF reading requires
 Poppler's `pdftohtml` and `pdfimages`; on Arch Linux, install them with
@@ -128,3 +189,7 @@ Implementation agents should read, in order:
 10. `docs/VERTICAL_SLICES.md`
 
 Then implement slices in order and do not start the next slice until its exit criteria pass.
+
+## License
+
+Listen is licensed under the MIT License. See [LICENSE](LICENSE).
